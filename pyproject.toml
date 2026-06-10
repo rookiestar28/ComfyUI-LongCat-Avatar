@@ -29,3 +29,25 @@ dependencies = {file = ["requirements.txt"]}
 PublisherId = "rookiestar"
 DisplayName = "ComfyUI LongCat Avatar"
 Icon = "LongCat_Video/assets/longcat-video_logo.svg"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 120
+extend-exclude = [
+    ".planning",
+    ".sessions",
+    "reference",
+    "LongCat_Video/longcat_video",
+    "LongCat_Video/whisper-large-v3",
+    "LongCat_Video/LongCat-Video",
+    "LongCat_Video/assets",
+]
+
+[tool.ruff.lint]
+select = [
+    "E9",
+    "F63",
+    "F7",
+    "F82",
+    "E722",
+]

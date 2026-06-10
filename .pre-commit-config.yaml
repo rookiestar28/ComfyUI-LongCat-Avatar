@@ -6,3 +6,10 @@ repos:
         entry: detect-secrets-hook
         language: system
         types: [text]
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        name: ruff scoped quality gate
+        args: [--config=pyproject.toml]
+        files: ^(LongCat_Video_node\.py|node_utils\.py|__init__\.py|LongCat_Video/(audio_contract|audio_crop|attention_contract|bbox_contract|checkpoint_contract|debug_profile|model_contract|model_loading_contract|performance_contract|sampler_contract|scheduler_contract|text_conditioning|video_output)\.py|tests/.*\.py|scripts/.*\.py)$
