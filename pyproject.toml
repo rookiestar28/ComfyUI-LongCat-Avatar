@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "comfyui-longcat-avatar"
 description = "ComfyUI custom nodes for LongCat Video Avatar 1.5 audio-driven human video generation."
-version = "0.1.5"
+version = "0.2.0"
 license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.9"
