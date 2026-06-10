@@ -8,7 +8,7 @@ This repository adapts the official Avatar 1.5 pipeline to ComfyUI. It focuses o
 </p>
 
 <div align="center">
-  <video src="assets/readme-demo.mp4" width="900"></video>
+  <video src="https://github.com/user-attachments/assets/dbad0a81-c961-4cef-9a18-09377de2397a" width="900"></video>
 </div>
 
 ## Table of Contents
