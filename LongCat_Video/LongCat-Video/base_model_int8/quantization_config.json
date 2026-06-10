@@ -1,0 +1,7 @@
+{
+  "quantization_method": "int8_per_channel_symmetric",
+  "skip_patterns": [
+    "final_layer.linear"
+  ],
+  "description": "Weight-only INT8 quantization with per-channel symmetric scaling"
+}

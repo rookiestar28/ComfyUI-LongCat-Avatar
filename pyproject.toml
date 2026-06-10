@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "comfyui-longcat-avatar"
+description = "ComfyUI custom nodes for LongCat Video Avatar 1.5 audio-driven human video generation."
+version = "0.1.0"
+license = {file = "LICENSE"}
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{name = "rookiestar28"}]
+dynamic = ["dependencies"]
+classifiers = [
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Environment :: GPU :: NVIDIA CUDA",
+]
+
+[project.urls]
+Repository = "https://github.com/rookiestar28/ComfyUI-LongCat-Avatar"
+Documentation = "https://github.com/rookiestar28/ComfyUI-LongCat-Avatar#readme"
+"Bug Tracker" = "https://github.com/rookiestar28/ComfyUI-LongCat-Avatar/issues"
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.comfy]
+PublisherId = "rookiestar"
+DisplayName = "ComfyUI LongCat Avatar"
+Icon = "LongCat_Video/assets/longcat-video_logo.svg"

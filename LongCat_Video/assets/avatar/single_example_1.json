@@ -1,0 +1,7 @@
+{
+    "prompt": "A western man stands on stage under dramatic lighting, holding a microphone close to their mouth. Wearing a vibrant red jacket with gold embroidery, the singer is speaking while smoke swirls around them, creating a dynamic and atmospheric scene.",
+    "cond_image": "assets/avatar/single/man.png",
+    "cond_audio": {
+        "person1": "assets/avatar/single/man.mp3"
+    }
+}

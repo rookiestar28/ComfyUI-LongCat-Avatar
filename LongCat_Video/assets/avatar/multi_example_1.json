@@ -1,0 +1,9 @@
+{
+    "prompt": "Static camera, In a professional recording studio, two people stand facing each other, both wearing large headphones. They are speaking clearly into a large condenser microphone suspended between them. They looked at each other affectionately and occasionally shook their heads according to the rhythm. The soundproofed walls and visible recording equipment create an atmosphere focused on capturing high-quality audio as they interact and communicate.",
+    "cond_image": "assets/avatar/multi/sing.png",
+    "cond_audio": {
+        "person1": "assets/avatar/multi/sing_man.WAV",
+        "person2": "assets/avatar/multi/sing_woman.WAV"
+    },
+    "audio_type": "para"
+}

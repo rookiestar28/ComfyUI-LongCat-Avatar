@@ -1,0 +1,13 @@
+{
+    "prompt": "Static camera, two people are speaking. Two people sit side by side in a warmly lit café, engaged in a lively conversation. The woman has vivid expressions as she speaks, while the man listens attentively. They occasionally look at each other and nod in affirmation. Their interaction suggests they are discussing something meaningful, sharing thoughts and exchanging ideas in a relaxed and friendly atmosphere.",
+    "cond_image": "assets/avatar/multi/introduce.png",
+    "cond_audio": {
+        "person1": "assets/avatar/multi/introduce_woman.mp3",
+        "person2": "assets/avatar/multi/introduce_man.mp3"
+    },
+    "audio_type": "add",
+    "bbox": {
+        "person1": [100, 80, 800, 640],
+        "person2": [50, 720, 820, 1300]
+    }
+}

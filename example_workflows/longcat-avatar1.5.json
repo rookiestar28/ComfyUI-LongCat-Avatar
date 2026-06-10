@@ -1,0 +1,722 @@
+{
+  "id": "24406e80-db5d-4681-95f1-673239e92a0d",
+  "revision": 0,
+  "last_node_id": 36,
+  "last_link_id": 51,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LongCat_Video_SM_Model",
+      "pos": [
+        806.4995386110617,
+        3004.180059280196
+      ],
+      "size": [
+        450.318181818182,
+        154
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_Model"
+      },
+      "widgets_values": [
+        "official_sharded",
+        "sageattn",
+        true,
+        "LongCat-Video-Avatar-vae.safetensors",
+        "longcat-avatar-dmd_lora.safetensors"
+      ]
+    },
+    {
+      "id": 2,
+      "type": "LongCat_Video_SM_Sampler",
+      "pos": [
+        878.572962121851,
+        3248.528727552484
+      ],
+      "size": [
+        289.5999999999999,
+        358
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 1
+        },
+        {
+          "name": "te_cond",
+          "type": "CONDITIONING",
+          "link": 4
+        },
+        {
+          "name": "au_cond",
+          "type": "CONDITIONING",
+          "link": 31
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "name": "video_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_Sampler"
+      },
+      "widgets_values": [
+        "ai2v",
+        "480p",
+        1160625414,
+        "randomize",
+        8,
+        1,
+        1,
+        10,
+        3,
+        1,
+        "",
+        "cpu"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "CreateVideo",
+      "pos": [
+        354.42934298451956,
+        3652.368151706025
+      ],
+      "size": [
+        270,
+        103.453125
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 2
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 51
+        }
+      ],
+      "outputs": [
+        {
+          "name": "VIDEO",
+          "type": "VIDEO",
+          "links": [
+            3
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "CreateVideo"
+      },
+      "widgets_values": [
+        25
+      ]
+    },
+    {
+      "id": 4,
+      "type": "SaveVideo",
+      "pos": [
+        1411.6974481741652,
+        3029.5768146408363
+      ],
+      "size": [
+        440.60848123779306,
+        694.1173569687788
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video",
+          "type": "VIDEO",
+          "link": 3
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "SaveVideo"
+      },
+      "widgets_values": [
+        "video/ComfyUI",
+        "mp4",
+        "h264"
+      ]
+    },
+    {
+      "id": 5,
+      "type": "LongCat_Video_SM_Encode",
+      "pos": [
+        301.0440996139142,
+        3265.4564902997304
+      ],
+      "size": [
+        392.73678955078117,
+        283.6268688964842
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "te_cond",
+          "type": "CONDITIONING",
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_Encode"
+      },
+      "widgets_values": [
+        "Static camera, a young woman is singing.",
+        "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards."
+      ]
+    },
+    {
+      "id": 7,
+      "type": "LoadImage",
+      "pos": [
+        -220.56284555861257,
+        3389.7308428574097
+      ],
+      "size": [
+        270,
+        371.421875
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            6
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "ChatGPT Image 2026年5月12日 下午12_02_04.png",
+        "image"
+      ]
+    },
+    {
+      "id": 8,
+      "type": "CLIPLoader",
+      "pos": [
+        276.71933523193434,
+        3085.1933283267012
+      ],
+      "size": [
+        438.5,
+        106
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            7
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "wan",
+        "default"
+      ]
+    },
+    {
+      "id": 15,
+      "type": "LoadAudio",
+      "pos": [
+        -1171.5462973701954,
+        3423.776976601793
+      ],
+      "size": [
+        270,
+        151.453125
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            48,
+            51
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "LoadAudio"
+      },
+      "widgets_values": [
+        "05-記憶裡的情話.WAV",
+        null,
+        null
+      ]
+    },
+    {
+      "id": 16,
+      "type": "SaveAudio",
+      "pos": [
+        -841.5766729372637,
+        3456.187574736228
+      ],
+      "size": [
+        270,
+        112
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 49
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "SaveAudio"
+      },
+      "widgets_values": [
+        "audio/ComfyUI"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "LongCat_Video_SM_Audio",
+      "pos": [
+        -289.8617717664231,
+        3109.8766095258356
+      ],
+      "size": [
+        376.2925848204329,
+        170
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio_encoder",
+          "type": "AUDIO_ENCODER",
+          "link": 45
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 50
+        },
+        {
+          "name": "left_audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "au_cond",
+          "type": "CONDITIONING",
+          "links": [
+            31
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_Audio"
+      },
+      "widgets_values": [
+        25,
+        "para",
+        ""
+      ]
+    },
+    {
+      "id": 25,
+      "type": "Note",
+      "pos": [
+        -1153.6121682852802,
+        3114.9046291962995
+      ],
+      "size": [
+        559.5,
+        91.453125
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "note",
+      "properties": {},
+      "widgets_values": [
+        "If there is no background music, you can skip the step of separating the vocals."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 27,
+      "type": "LongCat_Video_SM_WhisperModel",
+      "pos": [
+        -283.74010921857274,
+        3002.911598401758
+      ],
+      "size": [
+        367.29999999999995,
+        58
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "AUDIO_ENCODER",
+          "type": "AUDIO_ENCODER",
+          "links": [
+            45
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_WhisperModel"
+      },
+      "widgets_values": [
+        "whisper-large-v3.safetensors"
+      ]
+    },
+    {
+      "id": 35,
+      "type": "LongCat_Video_SM_VocalModel",
+      "pos": [
+        -1181.8608772573584,
+        3310.5651504237444
+      ],
+      "size": [
+        355.378515625,
+        58
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "AUDIO_ENCODER",
+          "type": "AUDIO_ENCODER",
+          "links": [
+            47
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_VocalModel"
+      },
+      "widgets_values": [
+        "Kim_Vocal_2.onnx"
+      ]
+    },
+    {
+      "id": 36,
+      "type": "LongCat_Video_SM_Vocal",
+      "pos": [
+        -805.0146727517421,
+        3337.3265280473142
+      ],
+      "size": [
+        233.0494140625,
+        46
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio_encoder",
+          "type": "AUDIO_ENCODER",
+          "link": 47
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 48
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            49,
+            50
+          ]
+        },
+        {
+          "name": "audio_path",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_Vocal"
+      },
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "VIDEO"
+    ],
+    [
+      4,
+      5,
+      0,
+      2,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      6,
+      7,
+      0,
+      2,
+      3,
+      "IMAGE"
+    ],
+    [
+      7,
+      8,
+      0,
+      5,
+      0,
+      "CLIP"
+    ],
+    [
+      31,
+      22,
+      0,
+      2,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      45,
+      27,
+      0,
+      22,
+      0,
+      "AUDIO_ENCODER"
+    ],
+    [
+      47,
+      35,
+      0,
+      36,
+      0,
+      "AUDIO_ENCODER"
+    ],
+    [
+      48,
+      15,
+      0,
+      36,
+      1,
+      "AUDIO"
+    ],
+    [
+      49,
+      36,
+      0,
+      16,
+      0,
+      "AUDIO"
+    ],
+    [
+      50,
+      36,
+      0,
+      22,
+      1,
+      "AUDIO"
+    ],
+    [
+      51,
+      15,
+      0,
+      3,
+      1,
+      "AUDIO"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 1,
+      "title": "daul or single",
+      "bounding": [
+        231.52864569682606,
+        2928.5351810600177,
+        1693.77333784355,
+        837.5839828256762
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 2,
+      "title": "人聲分離",
+      "bounding": [
+        -1206.978482711904,
+        2929.740934060109,
+        664.4343597746381,
+        832.2061106761189
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "single /dual",
+      "bounding": [
+        -532.9848890375133,
+        2927.4080719481403,
+        754.3556166565302,
+        367.1775000310031
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 5,
+      "title": "Group",
+      "bounding": [
+        -530.7289059457484,
+        3308.7362528574113,
+        749.5444203871359,
+        455.1534049999991
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.35049389948139237,
+      "offset": [
+        1795.3998951673746,
+        -1826.5864047427526
+      ]
+    },
+    "frontendVersion": "1.45.15",
+    "VHS_latentpreview": true,
+    "VHS_latentpreviewrate": 16,
+    "VHS_MetadataImage": false,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

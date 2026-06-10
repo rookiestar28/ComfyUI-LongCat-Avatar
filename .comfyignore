@@ -1,0 +1,42 @@
+# Development-only files excluded from Comfy Registry archives.
+.github/
+.planning/
+.sessions/
+reference/
+REFERENCE/
+tests/
+
+# Local environments and caches.
+.venv/
+.venv-*/
+.venv-wsl/
+venv/
+ENV/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build and tool output.
+dist/
+build/
+.cache/
+.tmp/
+tmp/
+temp/
+*.log
+
+# Internal maintainer files.
+AGENTS.md
+ROADMAP.md
+AGENT_CONTEXT.md
+
+# Editor and OS files.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

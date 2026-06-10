@@ -1,0 +1,8 @@
+repos:
+  - repo: local
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets
+        entry: detect-secrets-hook
+        language: system
+        types: [text]
