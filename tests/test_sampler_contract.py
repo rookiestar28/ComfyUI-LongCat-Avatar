@@ -8,6 +8,7 @@ from LongCat_Video.sampler_contract import (
     build_audio_window_payload,
     build_audio_window_spec,
     build_latent_bookkeeping_spec,
+    build_sampler_execution_request,
     classify_audio_payload_window_state,
     expected_output_frames,
     normalize_seed,
@@ -69,6 +70,50 @@ class SamplerContractTests(unittest.TestCase):
                 ref_img_index=10,
                 mask_frame_range=3,
             )
+
+    def test_sampler_execution_request_normalizes_ui_values(self):
+        request = build_sampler_execution_request(
+            {"left_full_audio_emb": None},
+            stage_1="ai2v",
+            resolution="480p",
+            seed="42",
+            steps="8",
+            text_guidance_scale="1.5",
+            audio_guidance_scale="2.5",
+            ref_img_index="10",
+            mask_frame_range="3",
+            block_num="0",
+            mux_audio_path=" 0 ",
+            offload_device="cuda",
+        )
+
+        self.assertEqual(request.mode, SINGLE_MODE)
+        self.assertEqual(request.seed, 42)
+        self.assertEqual(request.steps, 8)
+        self.assertEqual(request.text_guidance_scale, 1.5)
+        self.assertEqual(request.audio_guidance_scale, 2.5)
+        self.assertEqual(request.block_num, 0)
+        self.assertEqual(request.mux_audio_path, "")
+        self.assertEqual(request.offload_device, "cuda")
+
+    def test_sampler_execution_request_preserves_valid_mux_path(self):
+        request = build_sampler_execution_request(
+            {"left_full_audio_emb": object()},
+            stage_1="ai2v",
+            resolution="720p",
+            seed=1,
+            steps=8,
+            text_guidance_scale=1.0,
+            audio_guidance_scale=1.0,
+            ref_img_index=10,
+            mask_frame_range=3,
+            block_num=1,
+            mux_audio_path="speech.wav",
+            offload_device="cpu",
+        )
+
+        self.assertEqual(request.mode, MULTI_MODE)
+        self.assertEqual(request.mux_audio_path, "speech.wav")
 
     def test_resolution_maps_to_official_dimensions(self):
         self.assertEqual(resolve_resolution_dimensions("480p"), (480, 832))

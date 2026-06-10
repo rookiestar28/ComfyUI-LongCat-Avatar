@@ -31,7 +31,7 @@ from .LongCat_Video.performance_contract import (
     build_runtime_plan,
     cleanup_runtime_plan,
 )
-from .LongCat_Video.sampler_contract import build_audio_window_payload, validate_sampler_inputs
+from .LongCat_Video.sampler_contract import build_audio_window_payload, build_sampler_execution_request
 from .LongCat_Video.text_conditioning import (
     DEFAULT_OFFICIAL_TEXT_ENCODER_ROOT,
     TEXT_CONDITIONING_SOURCE_CLIP,
@@ -41,7 +41,7 @@ from .LongCat_Video.text_conditioning import (
     resolve_or_download_official_text_encoder_layout,
     validate_text_conditioning_payload,
 )
-from .LongCat_Video.video_output import normalize_mux_audio_path, save_muxed_video, validate_mux_audio_path
+from .LongCat_Video.video_output import save_muxed_video, validate_mux_audio_path
 from .LongCat_Video.attention_contract import ATTENTION_MODES
 from .LongCat_Video.checkpoint_contract import (
     OFFICIAL_INT8_SHARDED,
@@ -220,54 +220,59 @@ class LongCat_Video_SM_Sampler(io.ComfyNode):
         with debug_profile.phase("clear_comfyui_cache"):
             clear_comfyui_cache()
         with debug_profile.phase("validate_inputs"):
-            mux_audio_path = normalize_mux_audio_path(mux_audio_path)
-            if mux_audio_path:
-                validate_mux_audio_path(mux_audio_path)
-            validate_text_conditioning_payload(te_cond, require_negative=True)
-            validate_audio_conditioning_payload(au_cond)
-            sampler_mode = validate_sampler_inputs(
+            request = build_sampler_execution_request(
                 au_cond,
                 stage_1=stage_1,
                 resolution=resolution,
                 seed=seed,
+                steps=steps,
+                text_guidance_scale=text_guidance_scale,
+                audio_guidance_scale=audio_guidance_scale,
                 ref_img_index=ref_img_index,
                 mask_frame_range=mask_frame_range,
+                block_num=block_num,
+                mux_audio_path=mux_audio_path,
+                offload_device=offload_device,
             )
+            if request.mux_audio_path:
+                validate_mux_audio_path(request.mux_audio_path)
+            validate_text_conditioning_payload(te_cond, require_negative=True)
+            validate_audio_conditioning_payload(au_cond)
         with debug_profile.phase("build_runtime_plan"):
-            runtime_plan = build_runtime_plan(runtime_device, block_num, offload_device)
+            runtime_plan = build_runtime_plan(runtime_device, request.block_num, request.offload_device)
             print(
                 "[INFO] LongCat runtime plan: "
-                f"block_num={getattr(runtime_plan, 'block_num', block_num)}, "
+                f"block_num={getattr(runtime_plan, 'block_num', request.block_num)}, "
                 f"streaming_prefetch_count={getattr(runtime_plan, 'streaming_prefetch_count', 'unknown')}, "
                 f"move_dit_to_device={getattr(runtime_plan, 'move_dit_to_device', 'unknown')}, "
                 f"offload_dit_after_generate={getattr(runtime_plan, 'offload_dit_after_generate', 'unknown')}, "
-                f"vae_offload_device={getattr(runtime_plan, 'vae_offload_device', offload_device)}"
+                f"vae_offload_device={getattr(runtime_plan, 'vae_offload_device', request.offload_device)}"
             )
         with debug_profile.phase("apply_runtime_plan"):
             apply_runtime_plan(model, runtime_plan)
         try:
             with debug_profile.phase("prepare_image"):
                 cond_image = tensor2image(image)
-            with debug_profile.phase("generate", mode=sampler_mode):
-                if sampler_mode == "multi":
-                    image=generate_multi(model,au_cond,te_cond,runtime_device,seed,cond_image,resolution,
-                        text_guidance_scale,audio_guidance_scale,steps,ref_img_index,mask_frame_range,model.use_distill,
+            with debug_profile.phase("generate", mode=request.mode):
+                if request.mode == "multi":
+                    image=generate_multi(model,au_cond,te_cond,runtime_device,request.seed,cond_image,request.resolution,
+                        request.text_guidance_scale,request.audio_guidance_scale,request.steps,request.ref_img_index,request.mask_frame_range,model.use_distill,
                         debug_profile=debug_profile.child("multi"))
                 else:
-                    image=generate(model,au_cond,te_cond,runtime_device,seed,stage_1,cond_image,resolution,
-                        text_guidance_scale,audio_guidance_scale,steps,ref_img_index,mask_frame_range,
+                    image=generate(model,au_cond,te_cond,runtime_device,request.seed,request.stage_1,cond_image,request.resolution,
+                        request.text_guidance_scale,request.audio_guidance_scale,request.steps,request.ref_img_index,request.mask_frame_range,
                         model.use_distill,debug_profile=debug_profile.child("single"))
         finally:
             with debug_profile.phase("cleanup_runtime_plan"):
                 cleanup_runtime_plan(model, runtime_plan, empty_cache=torch.cuda.empty_cache)
-        with debug_profile.phase("save_muxed_video", enabled=bool(mux_audio_path), mode=sampler_mode):
+        with debug_profile.phase("save_muxed_video", enabled=bool(request.mux_audio_path), mode=request.mode):
             video_path = save_muxed_video(
                 image,
-                enabled=bool(mux_audio_path),
+                enabled=bool(request.mux_audio_path),
                 output_dir=folder_paths.get_output_directory(),
-                audio_path=mux_audio_path,
+                audio_path=request.mux_audio_path,
                 prefix=None,
-                mode=sampler_mode,
+                mode=request.mode,
             )
         return io.NodeOutput(image, video_path)
 

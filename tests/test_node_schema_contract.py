@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from tests.support.comfy_stubs import FakeSchema, loaded_longcat_extension_module, loaded_longcat_node_module
 
@@ -267,7 +268,25 @@ class NodeSchemaContractTests(unittest.TestCase):
             node_module.clear_comfyui_cache = lambda: None
             node_module.validate_text_conditioning_payload = lambda *args, **kwargs: None
             node_module.validate_audio_conditioning_payload = lambda *args, **kwargs: None
-            node_module.validate_sampler_inputs = lambda *args, **kwargs: "single"
+
+            def fake_build_sampler_execution_request(*args, **kwargs):
+                mux_audio_path = "" if str(kwargs["mux_audio_path"]).strip() in ("", "0") else kwargs["mux_audio_path"]
+                return SimpleNamespace(
+                    mode="single",
+                    stage_1=kwargs["stage_1"],
+                    resolution=kwargs["resolution"],
+                    seed=kwargs["seed"],
+                    steps=kwargs["steps"],
+                    text_guidance_scale=kwargs["text_guidance_scale"],
+                    audio_guidance_scale=kwargs["audio_guidance_scale"],
+                    ref_img_index=kwargs["ref_img_index"],
+                    mask_frame_range=kwargs["mask_frame_range"],
+                    block_num=kwargs["block_num"],
+                    mux_audio_path=mux_audio_path,
+                    offload_device=kwargs["offload_device"],
+                )
+
+            node_module.build_sampler_execution_request = fake_build_sampler_execution_request
             def fake_build_runtime_plan(*args, **kwargs):
                 runtime_plan_calls.append((args, kwargs))
                 return plan
@@ -365,7 +384,9 @@ class NodeSchemaContractTests(unittest.TestCase):
             def fail_if_called(*args, **kwargs):
                 raise AssertionError("inference setup should not run for invalid mux_audio_path")
 
-            node_module.validate_sampler_inputs = fail_if_called
+            node_module.build_sampler_execution_request = lambda *args, **kwargs: SimpleNamespace(
+                mux_audio_path=kwargs["mux_audio_path"],
+            )
             node_module.build_runtime_plan = fail_if_called
             node_module.apply_runtime_plan = fail_if_called
             node_module.generate = fail_if_called

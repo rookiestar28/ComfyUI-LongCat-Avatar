@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from .video_output import normalize_mux_audio_path
+
 
 MAX_SEED = 2**31 - 1
 SINGLE_MODE = "single"
@@ -53,6 +55,22 @@ class LatentBookkeepingSpec:
     generated_latent_count: int
     num_ref_latents: int
     num_cond_latents: int
+
+
+@dataclass(frozen=True)
+class SamplerExecutionRequest:
+    mode: str
+    stage_1: str
+    resolution: str
+    seed: int
+    steps: int
+    text_guidance_scale: float
+    audio_guidance_scale: float
+    ref_img_index: int
+    mask_frame_range: int
+    block_num: int
+    mux_audio_path: str
+    offload_device: str
 
 
 def select_sampler_mode(audio_conditioning: Mapping[str, Any]) -> str:
@@ -148,6 +166,49 @@ def validate_sampler_inputs(
     normalize_seed(seed)
     validate_continuation_parameters(ref_img_index, mask_frame_range)
     return mode
+
+
+def build_sampler_execution_request(
+    audio_conditioning: Mapping[str, Any],
+    *,
+    stage_1: str,
+    resolution: str,
+    seed: int,
+    steps: int,
+    text_guidance_scale: float,
+    audio_guidance_scale: float,
+    ref_img_index: int,
+    mask_frame_range: int,
+    block_num: int,
+    mux_audio_path: str | None,
+    offload_device: str,
+) -> SamplerExecutionRequest:
+    mode = validate_sampler_inputs(
+        audio_conditioning,
+        stage_1=stage_1,
+        resolution=resolution,
+        seed=seed,
+        ref_img_index=ref_img_index,
+        mask_frame_range=mask_frame_range,
+    )
+    normalized_ref_img_index, normalized_mask_frame_range = validate_continuation_parameters(
+        ref_img_index,
+        mask_frame_range,
+    )
+    return SamplerExecutionRequest(
+        mode=mode,
+        stage_1=str(stage_1),
+        resolution=str(resolution),
+        seed=normalize_seed(seed),
+        steps=int(steps),
+        text_guidance_scale=float(text_guidance_scale),
+        audio_guidance_scale=float(audio_guidance_scale),
+        ref_img_index=normalized_ref_img_index,
+        mask_frame_range=normalized_mask_frame_range,
+        block_num=int(block_num),
+        mux_audio_path=normalize_mux_audio_path(mux_audio_path),
+        offload_device=str(offload_device),
+    )
 
 
 def segment_audio_start(segment_idx: int, audio_stride: int = 1) -> int:
