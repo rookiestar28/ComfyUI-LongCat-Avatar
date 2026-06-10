@@ -71,6 +71,22 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn('io.Combo.Input("gguf",', source)
         self.assertNotIn('add_model_folder_path("gguf"', source)
 
+    def test_unvalidated_gguf_loader_helpers_are_not_present(self):
+        utils_source = Path("LongCat_Video/utils.py").read_text(encoding="utf-8")
+        node_source = NODE_SOURCE_PATH.read_text(encoding="utf-8")
+
+        for token in (
+            "GGUFQuantizationConfig",
+            "GGUFQuantizer",
+            "GGUFReader",
+            "load_gguf_checkpoint",
+            "set_gguf2meta_model",
+            "apply_loras_gguf",
+        ):
+            self.assertNotIn(token, utils_source)
+            self.assertNotIn(token, node_source)
+        self.assertIn("GGUF DiT loading is not supported", utils_source)
+
     def test_sampler_source_exposes_bounded_distill_values(self):
         source = NODE_SOURCE_PATH.read_text(encoding="utf-8")
 
