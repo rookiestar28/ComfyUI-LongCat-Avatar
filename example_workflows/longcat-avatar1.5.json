@@ -1,22 +1,22 @@
 {
   "id": "24406e80-db5d-4681-95f1-673239e92a0d",
   "revision": 0,
-  "last_node_id": 36,
-  "last_link_id": 51,
+  "last_node_id": 42,
+  "last_link_id": 61,
   "nodes": [
     {
       "id": 1,
       "type": "LongCat_Video_SM_Model",
       "pos": [
-        806.4995386110617,
-        3004.180059280196
+        938.6989755410618,
+        3036.1532481101945
       ],
       "size": [
-        450.318181818182,
-        154
+        399.49818181818205,
+        190.79636363636382
       ],
       "flags": {},
-      "order": 0,
+      "order": 5,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -33,8 +33,9 @@
       },
       "widgets_values": [
         "official_sharded",
+        "official_sharded",
         "sageattn",
-        true,
+        "LongCat-Video-Avatar-vae.safetensors",
         "LongCat-Video-Avatar-vae.safetensors",
         "longcat-avatar-dmd_lora.safetensors"
       ]
@@ -43,15 +44,15 @@
       "id": 2,
       "type": "LongCat_Video_SM_Sampler",
       "pos": [
-        878.572962121851,
-        3248.528727552484
+        962.5214492718509,
+        3290.686078612483
       ],
       "size": [
-        289.5999999999999,
-        358
+        354.9399999999996,
+        406
       ],
       "flags": {},
-      "order": 11,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -62,7 +63,7 @@
         {
           "name": "te_cond",
           "type": "CONDITIONING",
-          "link": 4
+          "link": 53
         },
         {
           "name": "au_cond",
@@ -95,31 +96,32 @@
       "widgets_values": [
         "ai2v",
         "480p",
-        1160625414,
+        585152663,
         "randomize",
         8,
         1,
         1,
-        10,
-        3,
-        1,
+        12,
+        5,
+        0,
         "",
-        "cpu"
+        "cuda",
+        false
       ]
     },
     {
       "id": 3,
       "type": "CreateVideo",
       "pos": [
-        354.42934298451956,
-        3652.368151706025
+        1543.2238568624882,
+        2967.522071732671
       ],
       "size": [
-        270,
-        103.453125
+        284.52,
+        78
       ],
       "flags": {},
-      "order": 12,
+      "order": 14,
       "mode": 0,
       "inputs": [
         {
@@ -131,7 +133,7 @@
           "name": "audio",
           "shape": 7,
           "type": "AUDIO",
-          "link": 51
+          "link": 61
         }
       ],
       "outputs": [
@@ -156,15 +158,15 @@
       "id": 4,
       "type": "SaveVideo",
       "pos": [
-        1411.6974481741652,
-        3029.5768146408363
+        1465.1116661741655,
+        3084.7880744237054
       ],
       "size": [
-        440.60848123779306,
-        694.1173569687788
+        547.8295012377932,
+        775.7442518566899
       ],
       "flags": {},
-      "order": 13,
+      "order": 15,
       "mode": 0,
       "inputs": [
         {
@@ -189,21 +191,22 @@
       "id": 5,
       "type": "LongCat_Video_SM_Encode",
       "pos": [
-        301.0440996139142,
-        3265.4564902997304
+        304.4837763109388,
+        3377.8789056832006
       ],
       "size": [
-        392.73678955078117,
-        283.6268688964842
+        500.49035829608545,
+        347.03032494456784
       ],
       "flags": {},
-      "order": 7,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
           "name": "clip",
+          "shape": 7,
           "type": "CLIP",
-          "link": 7
+          "link": null
         }
       ],
       "outputs": [
@@ -211,7 +214,7 @@
           "name": "te_cond",
           "type": "CONDITIONING",
           "links": [
-            4
+            53
           ]
         }
       ],
@@ -219,7 +222,10 @@
         "Node name for S&R": "LongCat_Video_SM_Encode"
       },
       "widgets_values": [
-        "Static camera, a young woman is singing.",
+        "",
+        "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards.",
+        "cuda",
+        "A blonde young woman sat on the grass singing, golden sunlight bathing her, a gentle breeze ruffling her hair, she completely absorbed in the music, her expression one of pure bliss. Her body and hands move gently to the rhythm of the music. best quality.",
         "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards."
       ]
     },
@@ -227,15 +233,15 @@
       "id": 7,
       "type": "LoadImage",
       "pos": [
-        -220.56284555861257,
-        3389.7308428574097
+        -235.60620967358412,
+        3383.795502790406
       ],
       "size": [
         270,
         371.421875
       ],
       "flags": {},
-      "order": 3,
+      "order": 7,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -258,7 +264,7 @@
         "Node name for S&R": "LoadImage"
       },
       "widgets_values": [
-        "ChatGPT Image 2026年5月12日 下午12_02_04.png",
+        "xjxw7l.jpg",
         "image"
       ]
     },
@@ -266,24 +272,22 @@
       "id": 8,
       "type": "CLIPLoader",
       "pos": [
-        276.71933523193434,
-        3085.1933283267012
+        315.28078587859324,
+        3216.174468727046
       ],
       "size": [
-        438.5,
+        483.1712631176988,
         106
       ],
       "flags": {},
-      "order": 1,
-      "mode": 0,
+      "order": 6,
+      "mode": 2,
       "inputs": [],
       "outputs": [
         {
           "name": "CLIP",
           "type": "CLIP",
-          "links": [
-            7
-          ]
+          "links": []
         }
       ],
       "properties": {
@@ -301,15 +305,15 @@
       "id": 15,
       "type": "LoadAudio",
       "pos": [
-        -1171.5462973701954,
-        3423.776976601793
+        -1197.6355535685436,
+        3350.5910261885724
       ],
       "size": [
-        270,
-        151.453125
+        351.81818181818176,
+        136
       ],
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -317,8 +321,7 @@
           "name": "AUDIO",
           "type": "AUDIO",
           "links": [
-            48,
-            51
+            58
           ]
         }
       ],
@@ -328,40 +331,9 @@
         "Node name for S&R": "LoadAudio"
       },
       "widgets_values": [
-        "05-記憶裡的情話.WAV",
+        "非鳥.MP3",
         null,
         null
-      ]
-    },
-    {
-      "id": 16,
-      "type": "SaveAudio",
-      "pos": [
-        -841.5766729372637,
-        3456.187574736228
-      ],
-      "size": [
-        270,
-        112
-      ],
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": 49
-        }
-      ],
-      "outputs": [],
-      "properties": {
-        "cnr_id": "comfy-core",
-        "ver": "0.24.0",
-        "Node name for S&R": "SaveAudio"
-      },
-      "widgets_values": [
-        "audio/ComfyUI"
       ]
     },
     {
@@ -376,7 +348,7 @@
         170
       ],
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -418,15 +390,15 @@
       "id": 25,
       "type": "Note",
       "pos": [
-        -1153.6121682852802,
-        3114.9046291962995
+        -1174.1821682852808,
+        3081.2555382872088
       ],
       "size": [
         559.5,
         91.453125
       ],
       "flags": {},
-      "order": 6,
+      "order": 2,
       "mode": 0,
       "inputs": [],
       "outputs": [],
@@ -450,7 +422,7 @@
         58
       ],
       "flags": {},
-      "order": 2,
+      "order": 0,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -473,15 +445,15 @@
       "id": 35,
       "type": "LongCat_Video_SM_VocalModel",
       "pos": [
-        -1181.8608772573584,
-        3310.5651504237444
+        -1202.6667450259542,
+        3242.621514060107
       ],
       "size": [
-        355.378515625,
-        58
+        353.65124289772734,
+        59
       ],
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -504,15 +476,15 @@
       "id": 36,
       "type": "LongCat_Video_SM_Vocal",
       "pos": [
-        -805.0146727517421,
-        3337.3265280473142
+        -796.1262760575277,
+        3412.780404080372
       ],
       "size": [
         233.0494140625,
         46
       ],
       "flags": {},
-      "order": 8,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -523,7 +495,7 @@
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 48
+          "link": 59
         }
       ],
       "outputs": [
@@ -531,8 +503,8 @@
           "name": "audio",
           "type": "AUDIO",
           "links": [
-            49,
-            50
+            50,
+            57
           ]
         },
         {
@@ -545,6 +517,98 @@
         "Node name for S&R": "LongCat_Video_SM_Vocal"
       },
       "widgets_values": []
+    },
+    {
+      "id": 38,
+      "type": "Note",
+      "pos": [
+        311.4767084970306,
+        3044.588934302369
+      ],
+      "size": [
+        476.23,
+        112.13312500000029
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "note",
+      "properties": {},
+      "widgets_values": [
+        "You can freely choose to use the Load CLIP + LongCat Avatar Text Encode node or the standalone LongCat Avatar Text Encode node. The latter loads the text encoder model from the LongCat official repository by default and has an automatic download function."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 41,
+      "type": "PreviewAudio",
+      "pos": [
+        -819.6165770576595,
+        3543.870465208753
+      ],
+      "size": [
+        270,
+        88
+      ],
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 57
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.24.0",
+        "Node name for S&R": "PreviewAudio"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 42,
+      "type": "LongCat_Video_SM_AudioCrop",
+      "pos": [
+        -1187.2006110516502,
+        3546.375765617976
+      ],
+      "size": [
+        336.2251953125,
+        152
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 58
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            59,
+            61
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LongCat_Video_SM_AudioCrop"
+      },
+      "widgets_values": [
+        "0:27",
+        "0:53"
+      ]
     }
   ],
   "links": [
@@ -573,28 +637,12 @@
       "VIDEO"
     ],
     [
-      4,
-      5,
-      0,
-      2,
-      1,
-      "CONDITIONING"
-    ],
-    [
       6,
       7,
       0,
       2,
       3,
       "IMAGE"
-    ],
-    [
-      7,
-      8,
-      0,
-      5,
-      0,
-      "CLIP"
     ],
     [
       31,
@@ -621,22 +669,6 @@
       "AUDIO_ENCODER"
     ],
     [
-      48,
-      15,
-      0,
-      36,
-      1,
-      "AUDIO"
-    ],
-    [
-      49,
-      36,
-      0,
-      16,
-      0,
-      "AUDIO"
-    ],
-    [
       50,
       36,
       0,
@@ -645,8 +677,40 @@
       "AUDIO"
     ],
     [
-      51,
+      53,
+      5,
+      0,
+      2,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      57,
+      36,
+      0,
+      41,
+      0,
+      "AUDIO"
+    ],
+    [
+      58,
       15,
+      0,
+      42,
+      0,
+      "AUDIO"
+    ],
+    [
+      59,
+      42,
+      0,
+      36,
+      1,
+      "AUDIO"
+    ],
+    [
+      61,
+      42,
       0,
       3,
       1,
@@ -660,8 +724,8 @@
       "bounding": [
         231.52864569682606,
         2928.5351810600177,
-        1693.77333784355,
-        837.5839828256762
+        1208.74349780485,
+        834.990240365576
       ],
       "color": "#3f789e",
       "flags": {}
@@ -701,15 +765,27 @@
       ],
       "color": "#3f789e",
       "flags": {}
+    },
+    {
+      "id": 6,
+      "title": "output",
+      "bounding": [
+        1452.9116661741657,
+        2927.459410516025,
+        478.4851422377933,
+        836.8101850935896
+      ],
+      "color": "#3f789e",
+      "flags": {}
     }
   ],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.35049389948139237,
+      "scale": 0.2143588810000039,
       "offset": [
-        1795.3998951673746,
-        -1826.5864047427526
+        2774.5556797118693,
+        -1686.3898990923017
       ]
     },
     "frontendVersion": "1.45.15",
