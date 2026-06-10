@@ -215,6 +215,7 @@ def _install_runtime_stubs(patcher: _ModulePatcher) -> None:
     node_utils = _module(
         f"{PACKAGE_NAME}.node_utils",
         clear_comfyui_cache=lambda: None,
+        get_runtime_device=lambda: "cuda:0",
         tensor2image=lambda value: value,
         audio2path=lambda value: "audio.wav",
     )

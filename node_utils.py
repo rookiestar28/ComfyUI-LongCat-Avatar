@@ -3,11 +3,11 @@
 import os
 import torch
 import gc
+import logging
 import comfy.model_management as mm
 from PIL import Image
 import numpy as np
 from comfy.utils import common_upscale
-from datetime import datetime
 import folder_paths
 import soundfile as sf
 import uuid
@@ -37,20 +37,36 @@ def auto_match(num_frames):
     num_frames = corrected_num_frames
     return num_frames
 
-def clear_comfyui_cache():
-    cf_models=mm.loaded_models()
-    try:
-        for pipe in cf_models:
-            pipe.unpatch_model(device_to=torch.device("cpu"))
-    except: pass
+def get_runtime_device():
+    return mm.get_torch_device()
+
+
+def _cuda_empty_cache():
+    if hasattr(torch, "cuda") and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def _cuda_max_memory_allocated():
+    if hasattr(torch, "cuda") and torch.cuda.is_available():
+        return torch.cuda.max_memory_allocated()
+    return 0
+
+
+def clear_comfyui_cache(unload_loaded_models=False):
+    if unload_loaded_models:
+        for pipe in mm.loaded_models():
+            try:
+                pipe.unpatch_model(device_to=torch.device("cpu"))
+            except Exception as exc:
+                logging.warning("LongCat cache cleanup could not unpatch a loaded model: %s", exc)
     mm.soft_empty_cache()
-    torch.cuda.empty_cache()
-    max_gpu_memory = torch.cuda.max_memory_allocated()
+    _cuda_empty_cache()
+    max_gpu_memory = _cuda_max_memory_allocated()
     print(f"After Max GPU memory allocated: {max_gpu_memory / 1000 ** 3:.2f} GB")
 
 def gc_cleanup():
     gc.collect()
-    torch.cuda.empty_cache()
+    _cuda_empty_cache()
 
 
 def phi2narry(img):

@@ -7,7 +7,7 @@ import os
 
 from comfy_api.latest import  io, ui
 import folder_paths
-from .node_utils import  clear_comfyui_cache,tensor2image,audio2path
+from .node_utils import  clear_comfyui_cache,get_runtime_device,tensor2image,audio2path
 from .LongCat_Video.run_demo_avatar_single_audio_to_video import load_longcat_video_model,generate,get_audio_vocal,get_audio_emb,load_audio_vocal
 from .LongCat_Video.run_demo_avatar_multi_audio_to_video import generate_multi
 from .LongCat_Video.audio_contract import (
@@ -52,10 +52,6 @@ from .LongCat_Video.checkpoint_contract import (
     inspect_checkpoint_source,
 )
 from .LongCat_Video.debug_profile import LongCatDebugProfiler
-device = torch.device(
-    "cuda:0") if torch.cuda.is_available() else torch.device(
-    "mps") if torch.backends.mps.is_available() else torch.device(
-    "cpu")
 
 MAX_SEED = np.iinfo(np.int32).max
 node_longcat_path = os.path.dirname(os.path.abspath(__file__))
@@ -219,7 +215,8 @@ class LongCat_Video_SM_Sampler(io.ComfyNode):
 
     @classmethod
     def execute(cls, model,te_cond,au_cond,image,stage_1,resolution, seed, steps,text_guidance_scale,audio_guidance_scale,ref_img_index,mask_frame_range,block_num,mux_audio_path,offload_device="cpu",debug_mode=False,) -> io.NodeOutput:
-        debug_profile = LongCatDebugProfiler(bool(debug_mode), label="sampler", device=device)
+        runtime_device = get_runtime_device()
+        debug_profile = LongCatDebugProfiler(bool(debug_mode), label="sampler", device=runtime_device)
         with debug_profile.phase("clear_comfyui_cache"):
             clear_comfyui_cache()
         with debug_profile.phase("validate_inputs"):
@@ -237,7 +234,7 @@ class LongCat_Video_SM_Sampler(io.ComfyNode):
                 mask_frame_range=mask_frame_range,
             )
         with debug_profile.phase("build_runtime_plan"):
-            runtime_plan = build_runtime_plan(device, block_num, offload_device)
+            runtime_plan = build_runtime_plan(runtime_device, block_num, offload_device)
             print(
                 "[INFO] LongCat runtime plan: "
                 f"block_num={getattr(runtime_plan, 'block_num', block_num)}, "
@@ -253,11 +250,11 @@ class LongCat_Video_SM_Sampler(io.ComfyNode):
                 cond_image = tensor2image(image)
             with debug_profile.phase("generate", mode=sampler_mode):
                 if sampler_mode == "multi":
-                    image=generate_multi(model,au_cond,te_cond,device,seed,cond_image,resolution,
+                    image=generate_multi(model,au_cond,te_cond,runtime_device,seed,cond_image,resolution,
                         text_guidance_scale,audio_guidance_scale,steps,ref_img_index,mask_frame_range,model.use_distill,
                         debug_profile=debug_profile.child("multi"))
                 else:
-                    image=generate(model,au_cond,te_cond,device,seed,stage_1,cond_image,resolution,
+                    image=generate(model,au_cond,te_cond,runtime_device,seed,stage_1,cond_image,resolution,
                         text_guidance_scale,audio_guidance_scale,steps,ref_img_index,mask_frame_range,
                         model.use_distill,debug_profile=debug_profile.child("single"))
         finally:
@@ -303,6 +300,7 @@ class LongCat_Video_SM_Encode(io.ComfyNode):
         prompt="",
         negative_prompt="",
     ) -> io.NodeOutput:
+        runtime_device = get_runtime_device()
         if clip is None:
             # CRITICAL: official path is preferred; connected legacy CLIP input deliberately selects single-file UMT5 fallback.
             layout = resolve_or_download_official_text_encoder_layout(
@@ -314,7 +312,7 @@ class LongCat_Video_SM_Encode(io.ComfyNode):
                 layout=layout,
                 prompt=prompt,
                 negative_prompt=negative_prompt,
-                device=device,
+                device=runtime_device,
                 offload_device=offload_device,
                 dtype=torch.bfloat16,
             )
@@ -334,8 +332,8 @@ class LongCat_Video_SM_Encode(io.ComfyNode):
         negative_prompt_embeds = negative_prompt_embeds.repeat(1, 1, 1)
         negative_prompt_embeds = negative_prompt_embeds.view(1, 1, seq_len, -1)
         te_cond={
-            "prompt_embeds":prompt_embeds.to(device,torch.bfloat16),
-            "negative_prompt_embeds":negative_prompt_embeds.to(device,torch.bfloat16),
+            "prompt_embeds":prompt_embeds.to(runtime_device,torch.bfloat16),
+            "negative_prompt_embeds":negative_prompt_embeds.to(runtime_device,torch.bfloat16),
             "text":[prompt,negative_prompt],
             "conditioning_source": TEXT_CONDITIONING_SOURCE_CLIP,
         } # #torch.Size([1, 1, 512, 4096])
@@ -366,9 +364,10 @@ class LongCat_Video_SM_Audio(io.ComfyNode):
     @classmethod
     def execute(cls, audio_encoder,audio,save_fps,audio_type,p_box,left_audio=None,num_segments=None) -> io.NodeOutput:
         parsed_p_box = parse_person_boxes(p_box)
+        runtime_device = get_runtime_device()
 
         # IMPORTANT: legacy exported workflows may still carry num_segments; duration is now audio-driven.
-        au_cond=get_audio_emb(audio_encoder,audio,left_audio,audio_type,save_fps,device,p_box=parsed_p_box)
+        au_cond=get_audio_emb(audio_encoder,audio,left_audio,audio_type,save_fps,runtime_device,p_box=parsed_p_box)
         clear_comfyui_cache()
         return io.NodeOutput(au_cond)
 

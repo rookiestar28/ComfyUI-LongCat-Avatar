@@ -425,7 +425,7 @@ class NodeSchemaContractTests(unittest.TestCase):
             )
 
         self.assertEqual(result, ({"num_segments": 6},))
-        self.assertEqual(calls[0][0], ("encoder", "audio", None, "para", 25, node_module.device))
+        self.assertEqual(calls[0][0], ("encoder", "audio", None, "para", 25, "cuda:0"))
         self.assertEqual(calls[0][1], {"p_box": "boxes"})
 
     def test_audio_window_schema_exposes_continuation_controls(self):
