@@ -48,8 +48,9 @@ class WorkflowContractTests(unittest.TestCase):
 
         self.assertEqual(model_node["widgets_values"], [
             "official_sharded",
+            "official_sharded",
             "sageattn",
-            True,
+            "LongCat-Video-Avatar-vae.safetensors",
             "LongCat-Video-Avatar-vae.safetensors",
             "longcat-avatar-dmd_lora.safetensors",
         ])
@@ -58,7 +59,7 @@ class WorkflowContractTests(unittest.TestCase):
         sampler_node = nodes_by_type(load_workflow())["LongCat_Video_SM_Sampler"]
 
         self.assertEqual(sampler_node["widgets_values"][0], "ai2v")
-        self.assertEqual(sampler_node["widgets_values"][-2:], ["", "cpu"])
+        self.assertEqual(sampler_node["widgets_values"][10:], ["", "cuda", False])
         self.assertEqual(sampler_node["outputs"][0]["name"], "image")
         self.assertEqual(sampler_node["outputs"][1]["name"], "video_path")
         self.assertEqual(sampler_node["outputs"][1]["type"], "STRING")
