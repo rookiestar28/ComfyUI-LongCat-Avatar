@@ -510,7 +510,11 @@ class LongCatVideoAvatarPipeline:
                     if num_cond_frames_added > 0:
                         pad_front = encoded_input[:, :, 0:1].repeat(1, 1, num_cond_frames_added, 1, 1)
                         encoded_input = torch.cat([pad_front, encoded_input], dim=2)
-                    assert encoded_input.shape[2] == num_cond_frames
+                    if encoded_input.shape[2] != num_cond_frames:
+                        raise ValueError(
+                            f"encoded input temporal dimension must be {num_cond_frames}; "
+                            f"got {encoded_input.shape[2]}."
+                        )
                     latent = retrieve_latents(self.vae.encode(encoded_input), gen, sample_mode="argmax")
                     cond_latents.append(latent)
 
@@ -1157,7 +1161,8 @@ class LongCatVideoAvatarPipeline:
         #     width,
         #     scale_factor_spatial
         # )
-        assert resize_mode in ['default', 'crop'], f"Unsupported resize_mode {resize_mode}, and you can only choose from [default, crop]"
+        if resize_mode not in ['default', 'crop']:
+            raise ValueError(f"Unsupported resize_mode {resize_mode}, and you can only choose from [default, crop]")
 
         if num_frames % self.vae_scale_factor_temporal != 1:
             loguru.logger.warning(
@@ -1470,7 +1475,8 @@ class LongCatVideoAvatarPipeline:
         debug_profile.mark("start", frames=num_frames, steps=num_inference_steps, output_type=output_type)
 
         # 1. Check inputs. Raise error if not correct
-        assert not (use_distill and enhance_hf), "use_distill and enhance_hf cannot both be True"
+        if use_distill and enhance_hf:
+            raise ValueError("use_distill and enhance_hf cannot both be True.")
         scale_factor_spatial = self.vae_scale_factor_spatial * 2
         if self.dit.cp_split_hw is not None:
             scale_factor_spatial *= max(self.dit.cp_split_hw)
@@ -1482,7 +1488,8 @@ class LongCatVideoAvatarPipeline:
         #     width,
         #     scale_factor_spatial
         # )
-        assert resize_mode in ['default', 'crop'], f"Unsupported resize_mode {resize_mode}, and you can choose from [default, crop]"
+        if resize_mode not in ['default', 'crop']:
+            raise ValueError(f"Unsupported resize_mode {resize_mode}, and you can choose from [default, crop]")
 
         if num_frames % self.vae_scale_factor_temporal != 1:
             loguru.logger.warning(

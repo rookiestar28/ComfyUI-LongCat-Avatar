@@ -43,6 +43,23 @@ class QualityGateContractTests(unittest.TestCase):
         self.assertIn("E722", lint["select"])
         self.assertNotIn("format", ruff)
 
+    def test_supported_runtime_boundaries_do_not_use_runtime_asserts(self):
+        supported_runtime_files = (
+            ROOT / "LongCat_Video" / "checkpoint_contract.py",
+            ROOT / "LongCat_Video" / "run_demo_avatar_single_audio_to_video.py",
+            ROOT / "LongCat_Video" / "run_demo_avatar_multi_audio_to_video.py",
+            ROOT / "LongCat_Video" / "longcat_video" / "pipeline_longcat_video.py",
+            ROOT / "LongCat_Video" / "longcat_video" / "pipeline_longcat_video_avatar.py",
+        )
+        offenders = []
+        for path in supported_runtime_files:
+            for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                stripped = line.strip()
+                if stripped.startswith("assert ") or stripped == "assert":
+                    offenders.append(f"{path.relative_to(ROOT)}:{line_number}:{stripped}")
+
+        self.assertEqual(offenders, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -274,7 +274,8 @@ def validate_checkpoint_source(
     index_path = os.path.join(shard_dir, index_name)
     index_data = _read_index(index_path)
     weight_map = index_data["weight_map"]
-    assert isinstance(weight_map, dict)
+    if not isinstance(weight_map, dict):
+        raise ValueError("Malformed sharded checkpoint index: missing non-empty weight_map")
 
     shard_names: set[str] = set()
     shard_paths: set[str] = set()
