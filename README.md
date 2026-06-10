@@ -39,7 +39,7 @@ This repository adapts the official Avatar 1.5 pipeline to ComfyUI. It focuses o
 | Official sharded DiT | Supported for Avatar 1.5 `base_model/` checkpoints |
 | Official sharded INT8 DiT | Supported for Avatar 1.5 `base_model_int8/` checkpoints |
 | Manifest-backed official weight download | Supported for known official Avatar 1.5 sharded assets |
-| Selectable attention backends | Supported for `auto`, `sdpa`, `flash_attn_2`, `flash_attn_3`, `xformers`, `sageattn`, and `sageattn_3` |
+| Selectable attention backends | Supported for `auto`, `sdpa`, `flash_attn_2`, `flash_attn_3`, `xformers`, and `sageattn`; `sageattn_3` is exposed as a reserved option but currently fails fast because LongCat varlen cross-attention wiring is incomplete |
 | GGUF DiT | Not supported yet |
 | Avatar 1.0 | Not supported by this ComfyUI contract |
 | CPU or MPS inference | Not supported for the CUDA-only model path |
@@ -65,7 +65,7 @@ Optional dependency groups:
 | --- | --- | --- |
 | `requirements.txt` | Default node install | Required Python packages for normal model loading, audio encoding, and sampling. |
 | `requirements-vocal.txt` | You use `LongCat Avatar Vocal Extract` | Installs `audio-separator` and ONNX Runtime dependencies. The node imports these only when the vocal extraction path is used. |
-| `requirements-acceleration.txt` | You want optional attention acceleration | Documentation-only examples for FlashAttention, xFormers, and SageAttention. Install versions manually that match your ComfyUI PyTorch/CUDA stack. |
+| `requirements-acceleration.txt` | You want optional attention acceleration | Documentation-only examples for FlashAttention, xFormers, and SageAttention. Do not install blindly; choose versions manually that match your ComfyUI PyTorch/CUDA stack. |
 
 Example optional vocal install:
 
@@ -131,6 +131,8 @@ Download sources:
 
 The VAE filename is selectable from the ComfyUI VAE dropdown; `LongCat-Video-Avatar-vae.safetensors` and `LongCat_Avatar_1.5_vae.safetensors` are both acceptable local filenames as long as the selected file is the Avatar 1.5 VAE.
 
+`Kim_Vocal_2.onnx` is only needed when using the optional vocal separation nodes. Install `requirements-vocal.txt` first if you use `LongCat Avatar Vocal Model` and `LongCat Avatar Vocal Extract`.
+
 Automatic download coverage:
 
 - `auto_download_missing_weights` only applies to the official Avatar 1.5 sharded DiT checkpoint modes, described below.
@@ -190,11 +192,13 @@ ComfyUI/models/longcat/LongCat-Video/
 
 `LongCat Avatar Text Encode` also exposes its own `offload_device` control for the native official path. The default is `cpu` so the native UMT5 text encoder weights do not consume VRAM; choose `cuda` only when you have enough headroom and want faster text encoding. If the `clip` input is connected, the node uses the existing ComfyUI `Load CLIP` single-file UMT5 fallback and does not load the native text encoder.
 
-Manual equivalent:
+Broad manual checkpoint download:
 
 ```bash
 hf download meituan-longcat/LongCat-Video-Avatar-1.5 --local-dir ComfyUI/models/longcat/LongCat-Video-Avatar-1.5
 ```
+
+That command downloads the upstream repository layout more broadly than the node's bounded manifest. The node still requires VAE, Whisper, and selectable distill LoRA files to be placed in the normal ComfyUI model folders described above.
 
 ## Nodes
 
@@ -203,7 +207,7 @@ hf download meituan-longcat/LongCat-Video-Avatar-1.5 --local-dir ComfyUI/models/
 | `(auto)Load LongCat Avatar Model` | Loads the DiT source selected by `inference_weight_mode`, VAE, and required Avatar 1.5 distill LoRA |
 | `LongCat Avatar Whisper` | Loads `whisper-large-v3.safetensors` from `ComfyUI/models/audio_encoders/` |
 | `LongCat Avatar Text Encode` | Preferred official-first text node. Without `clip`, it uses the shared official `LongCat-Video` tokenizer and UMT5 text encoder; with `clip`, it uses the ComfyUI `Load CLIP` single-file fallback |
-| `LongCat Avatar Audio Crop` | Trims a ComfyUI audio input by start/end time and provides an inline cropped-audio preview |
+| `LongCat Avatar Audio Crop` | Trims a ComfyUI audio input by start/end time, returns AUDIO, and provides an inline cropped-audio preview |
 | `LongCat Avatar Audio Encode` | Builds reusable full-clip single-audio or optional dual-audio conditioning |
 | `LongCat Avatar Audio Window` | Optionally slices reusable full-clip audio conditioning for explicit continuation windows |
 | `LongCat Avatar Sampler` | Generates frames in `ai2v` or `at2v` mode and can optionally mux audio into a saved video |
@@ -216,7 +220,7 @@ Typical graph order:
 2. Prefer `LongCat Avatar Text Encode` without connecting `clip` for official prompt-conditioning parity. It can auto-download the shared base `LongCat-Video` tokenizer/text encoder assets when `auto_download_missing_text_encoder` is enabled.
 3. Load Whisper with `LongCat Avatar Whisper`.
 4. Existing `Load CLIP` + `LongCat Avatar Text Encode` graphs remain supported as the UMT5 single-file fallback path.
-5. Optionally trim source audio with `LongCat Avatar Audio Crop`.
+5. Optionally trim source audio with `LongCat Avatar Audio Crop`. Its `Crop Preview` button queues only this output node so you can crop and preview audio without running the downstream sampler/video nodes.
 6. Encode audio with `LongCat Avatar Audio Encode`.
 7. Generate with `LongCat Avatar Sampler`.
 
@@ -232,7 +236,7 @@ Typical graph order:
 | `flash_attn_3` | Forces FlashAttention 3. The loader raises a clear error if the optional package is unavailable in the ComfyUI Python environment. |
 | `xformers` | Forces xFormers memory-efficient attention. The loader raises a clear error if xFormers is unavailable. |
 | `sageattn` | Forces SageAttention for DiT attention. The loader raises a clear error if SageAttention is unavailable. |
-| `sageattn_3` | Reserved for SageAttention3 Blackwell kernels. This mode must be fully available and compatible; otherwise the loader raises a clear error. |
+| `sageattn_3` | Reserved for SageAttention3 Blackwell kernels. It currently raises a clear error even when a candidate backend is present because LongCat text varlen cross-attention support is not fully wired; use `sageattn` instead. |
 
 SageAttention support is optional. Install and validate the package in the same Python environment that launches ComfyUI. The node uses lazy imports and does not require SageAttention for startup or CPU-only tests. At model load, the console prints the requested `attention_mode`, effective backend flags, and backend availability so slow SDPA fallback is visible.
 
@@ -304,6 +308,7 @@ If `p_box` is empty, the node still builds audio conditioning, but it does not p
 - `auto_download_missing_text_encoder`: on/off toggle on text encode nodes for bounded shared base `LongCat-Video` tokenizer/text encoder download.
 - `LongCat Avatar Text Encode` `offload_device`: chooses where the native official UMT5 text encoder is loaded for prompt encoding. `cpu` is the default to avoid loading the large text encoder into VRAM; `cuda` can be faster but needs substantially more VRAM. This is ignored when `clip` is connected for fallback.
 - `mux_audio_path`: optional local audio file path used to mux audio into the generated video. Leave it empty to return only image frames and an empty `video_path`. When provided, the node saves a muxed `.mp4` under the ComfyUI output directory using the built-in `longcat_avatar` filename prefix.
+- `debug_mode`: when enabled on `LongCat Avatar Sampler`, prints detailed phase timing, CUDA synchronization, and memory counters around cache cleanup, runtime-plan setup, generation, cleanup, and video muxing.
 
 Alternate scheduler controls are not exposed. Reference-wrapper scheduler names such as `longcat_distill_euler` are not adopted unless official Avatar 1.5 parity is proven with source comparison and tests.
 
