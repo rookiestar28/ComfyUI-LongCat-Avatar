@@ -57,6 +57,8 @@ pip install -r requirements.txt
 
 Use the Python environment that launches ComfyUI. The runtime path is CUDA-oriented and expects a compatible NVIDIA GPU plus a working CUDA PyTorch build already installed for ComfyUI. The default `requirements.txt` intentionally does not install `torch`, `torchvision`, `torchaudio`, FlashAttention, xFormers, SageAttention, Streamlit, OpenAI SDK, or upstream demo/server-only packages, because replacing those packages can break an existing ComfyUI setup.
 
+macOS/MPS inference is not supported in this release. Any MPS work must happen on a dedicated experimental branch and must not be merged into the public CUDA path until Apple Silicon smoke inference proves model loading, attention fallback, audio encoding, VAE encode/decode, and end-to-end timing.
+
 Optional dependency groups:
 
 | File | Use When | Notes |

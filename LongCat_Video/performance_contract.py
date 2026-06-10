@@ -10,6 +10,11 @@ OFFICIAL_DEFAULT_BASE_PRECISION = "bf16"
 SUPPORTED_BASE_PRECISIONS = (OFFICIAL_DEFAULT_BASE_PRECISION,)
 DISABLED_FP8_MODE = "disabled"
 OFFICIAL_INT8_SHARDED_SOURCE = "official_int8_sharded"
+MPS_EXPERIMENTAL_BRANCH = "mps/experimental-feasibility"
+MPS_NON_MERGE_CONDITION = (
+    "Do not merge MPS inference into main until model load, audio encode, attention fallback, "
+    "VAE encode/decode, and end-to-end smoke inference evidence exists on Apple Silicon."
+)
 
 
 @dataclass(frozen=True)
@@ -31,6 +36,18 @@ class PrecisionRuntimePlan:
     gguf_model: str | None
     checkpoint_source: str
     quantization_source: str
+
+
+@dataclass(frozen=True)
+class MPSFeasibilityReport:
+    target_branch: str
+    supported: bool
+    requested_device: str
+    recommended_dtype: str
+    attention_backend: str
+    cuda_only_assumptions: tuple[str, ...]
+    initialization_blockers: tuple[str, ...]
+    non_merge_condition: str
 
 
 def normalize_device_name(device: Any) -> str:
@@ -132,6 +149,34 @@ def validate_precision_runtime_request(
         gguf_model=None,
         checkpoint_source=checkpoint_source,
         quantization_source=quantization_source,
+    )
+
+
+def build_mps_feasibility_report(
+    *,
+    requested_device: Any = "mps",
+    recommended_dtype: str = "fp16",
+    attention_backend: str = "sdpa",
+) -> MPSFeasibilityReport:
+    normalized_device = normalize_device_name(requested_device)
+    return MPSFeasibilityReport(
+        target_branch=MPS_EXPERIMENTAL_BRANCH,
+        supported=False,
+        requested_device=normalized_device,
+        recommended_dtype=str(recommended_dtype),
+        attention_backend=str(attention_backend),
+        cuda_only_assumptions=(
+            "Sampler runtime currently calls require_cuda_device() before building an AvatarRuntimePlan.",
+            "Embedded Avatar DiT blocks use torch.amp.autocast(device_type='cuda').",
+            "Layer streaming and debug paths use torch.cuda streams, synchronization, and memory APIs.",
+            "Optional FlashAttention, xFormers, SageAttention, and Triton block-sparse paths are CUDA-oriented.",
+        ),
+        initialization_blockers=(
+            "MPS model load has no smoke evidence for DiT, VAE, Whisper audio encoder, and native UMT5 together.",
+            "bf16/fp16 dtype parity and attention fallback correctness are unverified on Apple Silicon.",
+            "End-to-end audio-driven frame timing and video decode memory behavior are unverified on MPS.",
+        ),
+        non_merge_condition=MPS_NON_MERGE_CONDITION,
     )
 
 
