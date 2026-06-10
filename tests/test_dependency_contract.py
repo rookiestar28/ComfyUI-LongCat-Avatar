@@ -1,0 +1,68 @@
+from pathlib import Path
+import ast
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def requirement_names(path: Path) -> set[str]:
+    names: set[str] = set()
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line or line.startswith(("-", "http:", "https:", "git+")):
+            continue
+        for marker in ("==", ">=", "<=", "~=", "!=", ">", "<", "["):
+            if marker in line:
+                line = line.split(marker, 1)[0]
+                break
+        names.add(line.strip().lower().replace("_", "-"))
+    return names
+
+
+class DependencyContractTests(unittest.TestCase):
+    def test_default_requirements_do_not_override_comfyui_cuda_stack(self):
+        forbidden = {
+            "torch",
+            "torchvision",
+            "torchaudio",
+            "flash-attn",
+            "streamlit",
+            "openai",
+            "pyarrow",
+            "tritonserverclient",
+        }
+
+        self.assertFalse(requirement_names(ROOT / "requirements.txt") & forbidden)
+
+    def test_optional_dependency_files_document_vocal_and_attention_paths(self):
+        vocal = requirement_names(ROOT / "requirements-vocal.txt")
+        self.assertIn("audio-separator", vocal)
+        self.assertIn("onnxruntime", vocal)
+
+        acceleration_text = (ROOT / "requirements-acceleration.txt").read_text(encoding="utf-8")
+        self.assertIn("flash-attn", acceleration_text)
+        self.assertIn("xformers", acceleration_text)
+        self.assertIn("SageAttention", acceleration_text)
+
+    def test_audio_separator_is_not_imported_at_module_import_time(self):
+        for path in (
+            ROOT / "LongCat_Video" / "run_demo_avatar_single_audio_to_video.py",
+            ROOT / "LongCat_Video" / "run_demo_avatar_multi_audio_to_video.py",
+        ):
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+            for node in tree.body:
+                if isinstance(node, ast.ImportFrom):
+                    self.assertNotEqual(node.module, "audio_separator.separator")
+                elif isinstance(node, ast.Import):
+                    self.assertFalse(any(alias.name.startswith("audio_separator") for alias in node.names))
+
+        single_source = (ROOT / "LongCat_Video" / "run_demo_avatar_single_audio_to_video.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("requires optional vocal separation dependencies", single_source)
+
+
+if __name__ == "__main__":
+    unittest.main()

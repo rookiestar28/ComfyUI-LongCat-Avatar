@@ -1,0 +1,9 @@
+# Optional attention acceleration packages.
+# These wheels are CUDA, Python, PyTorch, and platform specific. Install manually
+# in the same Python environment that launches ComfyUI after choosing versions
+# compatible with your local torch/CUDA stack.
+#
+# Examples only:
+# flash-attn
+# xformers
+# SageAttention

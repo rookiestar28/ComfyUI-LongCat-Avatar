@@ -63,7 +63,6 @@ from .debug_profile import ensure_debug_profiler
 import librosa
 from .longcat_video.audio_process import get_audio_encoder, get_audio_feature_extractor
 # from .longcat_video.audio_process.torch_utils import save_video_ffmpeg
-from audio_separator.separator import Separator
 from safetensors.torch import load_file as safe_load
 
 
@@ -76,6 +75,17 @@ def _load_sharded_state_dict(shard_paths):
 def torch_gc():
     torch.cuda.empty_cache()
     torch.cuda.ipc_collect()
+
+
+def _get_vocal_separator_class():
+    try:
+        from audio_separator.separator import Separator
+    except ImportError as exc:
+        raise ImportError(
+            "LongCat Avatar Vocal Extract requires optional vocal separation dependencies. "
+            "Install them with `pip install -r requirements-vocal.txt` in the ComfyUI Python environment."
+        ) from exc
+    return Separator
 
 def generate_random_uid():
     timestamp_part = str(int(time.time()))[-6:]
@@ -378,6 +388,7 @@ def load_audio_vocal(vocal_separator_path,audio_output_dir_temp,checkpoint_dir):
     audio_output_dir_temp = Path(audio_output_dir_temp)
     audio_separator_model_path = os.path.dirname(vocal_separator_path)
     audio_separator_model_name = os.path.basename(vocal_separator_path)
+    Separator = _get_vocal_separator_class()
     vocal_separator = Separator(
         output_dir=audio_output_dir_temp / "vocals",
         output_single_stem="vocals",

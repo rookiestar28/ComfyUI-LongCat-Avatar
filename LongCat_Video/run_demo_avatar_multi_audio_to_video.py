@@ -27,7 +27,6 @@ import librosa
 import soundfile as sf
 from .longcat_video.audio_process import get_audio_encoder, get_audio_feature_extractor
 from .longcat_video.audio_process.torch_utils import save_video_ffmpeg
-from audio_separator.separator import Separator
 from .model_contract import AVATAR_V15, normalize_sampling_parameters
 from .sampler_contract import (
     expected_output_frames,

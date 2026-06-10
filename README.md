@@ -55,7 +55,21 @@ cd ComfyUI-LongCat-Avatar
 pip install -r requirements.txt
 ```
 
-Use the Python environment that launches ComfyUI. The runtime path is CUDA-oriented and expects a compatible NVIDIA GPU, CUDA PyTorch build, and attention/runtime dependencies required by the LongCat Avatar pipeline.
+Use the Python environment that launches ComfyUI. The runtime path is CUDA-oriented and expects a compatible NVIDIA GPU plus a working CUDA PyTorch build already installed for ComfyUI. The default `requirements.txt` intentionally does not install `torch`, `torchvision`, `torchaudio`, FlashAttention, xFormers, SageAttention, Streamlit, OpenAI SDK, or upstream demo/server-only packages, because replacing those packages can break an existing ComfyUI setup.
+
+Optional dependency groups:
+
+| File | Use When | Notes |
+| --- | --- | --- |
+| `requirements.txt` | Default node install | Required Python packages for normal model loading, audio encoding, and sampling. |
+| `requirements-vocal.txt` | You use `LongCat Avatar Vocal Extract` | Installs `audio-separator` and ONNX Runtime dependencies. The node imports these only when the vocal extraction path is used. |
+| `requirements-acceleration.txt` | You want optional attention acceleration | Documentation-only examples for FlashAttention, xFormers, and SageAttention. Install versions manually that match your ComfyUI PyTorch/CUDA stack. |
+
+Example optional vocal install:
+
+```bash
+pip install -r requirements-vocal.txt
+```
 
 ## Required Model Files
 
