@@ -5,6 +5,7 @@ import math
 import random
 import argparse
 import datetime
+import shutil
 import PIL.Image
 import numpy as np
 from pathlib import Path
@@ -61,8 +62,7 @@ def extract_vocal_from_speech(source_path, target_path, vocal_separator, audio_o
 
     default_vocal_path = audio_output_dir_temp / "vocals" / outputs[0]
     default_vocal_path = default_vocal_path.resolve().as_posix()
-    cmd = f"mv '{default_vocal_path}' '{target_path}'"
-    os.system(cmd)
+    shutil.move(default_vocal_path, target_path)
     return target_path
 
 def audio_prepare_multi(left_temp_vocal_path, right_temp_vocal_path, generate_duration, left_raw_speech_path, right_raw_speech_path, sample_rate=16000, audio_type='para'):
@@ -91,11 +91,11 @@ def audio_prepare_multi(left_temp_vocal_path, right_temp_vocal_path, generate_du
     elif audio_type == 'para':
         left_speech_array_ext = left_speech_array
         right_speech_array_ext = right_speech_array
+        if len(left_speech_array_ext) != len(right_speech_array_ext):
+            raise ValueError("audio_type='para' requires equal-length left and right audio.")
         merge_raw_speech = left_raw_speech_array + right_raw_speech_array
     else:
         raise NotImplementedError(f"Unsupported audio_type of {audio_type}")
-
-    assert len(left_speech_array_ext) == len(right_speech_array_ext), f"The two speech lengths should be equal"
 
 
     source_duraion = len(left_speech_array_ext) / sr
@@ -105,6 +105,23 @@ def audio_prepare_multi(left_temp_vocal_path, right_temp_vocal_path, generate_du
         right_speech_array_ext = np.append(right_speech_array_ext, [0.]*added_sample_nums)
 
     return left_speech_array_ext, right_speech_array_ext, merge_raw_speech
+
+
+def resolve_person_bbox_coordinates(src_width, src_height, left_person_bbox, right_person_bbox):
+    if left_person_bbox is None and right_person_bbox is None:
+        face_scale = 0.1
+        left_y_min, left_y_max = int(src_height * face_scale), int(src_height * (1 - face_scale))
+        right_y_min, right_y_max = left_y_min, left_y_max
+        half_width = src_width // 2
+        left_x_min, left_x_max = int(half_width * face_scale), int(half_width * (1 - face_scale))
+        right_x_min = int(half_width * face_scale + half_width)
+        right_x_max = int(half_width * (1 - face_scale) + half_width)
+    elif left_person_bbox is not None and right_person_bbox is not None:
+        left_y_min, left_x_min, left_y_max, left_x_max = left_person_bbox
+        right_y_min, right_x_min, right_y_max, right_x_max = right_person_bbox
+    else:
+        raise ValueError("Multi-audio generation requires both left and right person boxes, or neither.")
+    return left_y_min, left_x_min, left_y_max, left_x_max, right_y_min, right_x_min, right_y_max, right_x_max
 
 
 def generate_multi(pipe,condition,te_cond,device,seed,cond_image,resolution,
@@ -151,7 +168,6 @@ def generate_multi(pipe,condition,te_cond,device,seed,cond_image,resolution,
     # negative_prompt = "Close-up, bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"
     # left_raw_speech_path = input_data['cond_audio'].get('person1', None)
     # right_raw_speech_path = input_data['cond_audio'].get('person2', None)
-    # assert left_raw_speech_path is not None or right_raw_speech_path is not None, f"At least one speech is required."
     # left_person_bbox, right_person_bbox = None, None
 
     num_frames=93 # 滑动窗口13,硬编码为93确保滑动窗口覆盖整个视频
@@ -285,13 +301,8 @@ def generate_multi(pipe,condition,te_cond,device,seed,cond_image,resolution,
 
     # left_full_audio_emb = pipe.get_audio_embedding(left_speech_array_ext, fps=save_fps*audio_stride, device=local_rank, sample_rate=sr, model_type=model_type)
     # right_full_audio_emb = pipe.get_audio_embedding(right_speech_array_ext, fps=save_fps*audio_stride, device=local_rank, sample_rate=sr, model_type=model_type)
-    # if torch.isnan(left_full_audio_emb).any() or torch.isnan(right_full_audio_emb).any():
-    #     raise ValueError(f"broken audio embedding with nan values")
     # if use_background_silent_audio:
     #     back_full_audio_emb = pipe.get_audio_embedding(np.zeros_like(left_speech_array_ext), fps=save_fps*audio_stride, device=local_rank, sample_rate=sr, model_type=model_type)
-    # assert left_full_audio_emb.shape == right_full_audio_emb.shape, f"Inconsistent audio embedding shape."
-    # if use_background_silent_audio:
-    #     assert left_full_audio_emb.shape == back_full_audio_emb.shape, f"Inconsistent audio embedding shape between speaker and background."
 
     # if context_parallel_util.get_cp_size() > 1:
     #     full_audio_emb_shape_list = list(left_full_audio_emb.size())
@@ -347,18 +358,16 @@ def generate_multi(pipe,condition,te_cond,device,seed,cond_image,resolution,
     background_mask = torch.zeros([src_height, src_width])
     human_mask1 = torch.zeros([src_height, src_width])
     human_mask2 = torch.zeros([src_height, src_width])
-    if left_person_bbox is None and right_person_bbox is None:
-        face_scale = 0.1
-        left_y_min, left_y_max = int(src_height * face_scale), int(src_height * (1 - face_scale))
-        right_y_min, right_y_max = left_y_min, left_y_max
-        src_width = src_width // 2
-        left_x_min, left_x_max = int(src_width * face_scale), int(src_width * (1 - face_scale))
-        right_x_min, right_x_max = int(src_width * face_scale + src_width), int(src_width * (1 - face_scale) + src_width)
-    elif left_person_bbox is not None and right_person_bbox is not None:
-        left_y_min, left_x_min, left_y_max, left_x_max = left_person_bbox
-        right_y_min, right_x_min, right_y_max, right_x_max = right_person_bbox
-    else:
-        raise NotImplementedError(f"Not supported bbox type.")
+    (
+        left_y_min,
+        left_x_min,
+        left_y_max,
+        left_x_max,
+        right_y_min,
+        right_x_min,
+        right_y_max,
+        right_x_max,
+    ) = resolve_person_bbox_coordinates(src_width, src_height, left_person_bbox, right_person_bbox)
     human_mask1[left_y_min:left_y_max, left_x_min:left_x_max] = 1
     human_mask2[right_y_min:right_y_max, right_x_min:right_x_max] = 1
     background_mask += human_mask1
