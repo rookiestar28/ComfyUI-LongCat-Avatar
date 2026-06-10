@@ -8,14 +8,14 @@ This repository adapts the official Avatar 1.5 pipeline to ComfyUI. It focuses o
 </p>
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/218e76e1-0d82-4097-b880-5310b3bb1b0c" width="900"></video>
+  <video src="assets/readme-demo.mp4" width="900"></video>
 </div>
 
 ## Table of Contents
 
 - [Feature Status](#feature-status)
 - [Installation](#installation)
-- [Required Model Files](#required-model-files)
+- [Model Files](#model-files)
 - [Inference Weight Modes](#inference-weight-modes)
 - [Model Source Boundaries](#model-source-boundaries)
 - [Automatic Official Weight Download](#automatic-official-weight-download)
@@ -38,7 +38,7 @@ This repository adapts the official Avatar 1.5 pipeline to ComfyUI. It focuses o
 | Single-file DiT `.safetensors` | Supported from `ComfyUI/models/diffusion_models/` |
 | Official sharded DiT | Supported for Avatar 1.5 `base_model/` checkpoints |
 | Official sharded INT8 DiT | Supported for Avatar 1.5 `base_model_int8/` checkpoints |
-| Manifest-backed official weight download | Supported for known official Avatar 1.5 sharded assets |
+| Manifest-backed official weight download | Supported for known official Avatar 1.5 sharded DiT assets and shared LongCat text encoder assets |
 | Selectable attention backends | Supported for `auto`, `sdpa`, `flash_attn_2`, `flash_attn_3`, `xformers`, and `sageattn`; `sageattn_3` is exposed as a reserved option but currently fails fast because LongCat varlen cross-attention wiring is incomplete |
 | GGUF DiT | Not supported yet |
 | Avatar 1.0 | Not supported by this ComfyUI contract |
@@ -73,14 +73,13 @@ Example optional vocal install:
 pip install -r requirements-vocal.txt
 ```
 
-## Required Model Files
+## Model Files
 
-**Place model files in the normal ComfyUI model folders so the node dropdowns can find them:**
+Use the normal ComfyUI model folders so the node dropdowns can find manually placed files.
 
 Some official assets can be downloaded automatically from inside the nodes. Enable `auto_download_missing_weights` on `(auto)Load LongCat Avatar Model` for official sharded Avatar 1.5 DiT checkpoints, and enable `auto_download_missing_text_encoder` on `LongCat Avatar Text Encode` for the official shared LongCat-Video tokenizer/text encoder. VAE, Whisper, and the selectable distill LoRA still need to be placed in the normal ComfyUI model folders.
 
-- ComfyUI/models/diffusion_models/
-  LongCat-Video-Avatar-1.5-int8.safetensors
+Required for normal Avatar 1.5 generation:
 
 - ComfyUI/models/loras/
   longcat-avatar-dmd_lora.safetensors
@@ -88,20 +87,26 @@ Some official assets can be downloaded automatically from inside the nodes. Enab
 - ComfyUI/models/vae/
   LongCat-Video-Avatar-vae.safetensors
 
-- ComfyUI/models/clip/
-  umt5_xxl_fp8_e4m3fn_scaled.safetensors
-
 - ComfyUI/models/audio_encoders/
   whisper-large-v3.safetensors
+
+Choose one DiT source:
+
+- `official_sharded`: use `auto_download_missing_weights` or place the official sharded files under `ComfyUI/models/longcat/LongCat-Video-Avatar-1.5/base_model/`.
+- `official_int8_sharded`: use `auto_download_missing_weights` or place the official INT8 sharded files under `ComfyUI/models/longcat/LongCat-Video-Avatar-1.5/base_model_int8/`.
+- `single_file_safetensors`: place `LongCat-Video-Avatar-1.5-int8.safetensors` under `ComfyUI/models/diffusion_models/`.
+
+Choose one text encoder source:
+
+- Recommended native path: use `auto_download_missing_text_encoder` or place the shared official assets under `ComfyUI/models/longcat/LongCat-Video/tokenizer/` and `ComfyUI/models/longcat/LongCat-Video/text_encoder/`.
+- Existing fallback path: connect ComfyUI `Load CLIP` to `LongCat Avatar Text Encode` and place `umt5_xxl_fp8_e4m3fn_scaled.safetensors` under `ComfyUI/models/clip/`.
+
+Optional vocal separation:
 
 - ComfyUI/models/longcat/
   Kim_Vocal_2.onnx
 
-- ComfyUI/models/longcat/LongCat-Video/
-  tokenizer/
-  text_encoder/
-
-**Official sharded checkpoints use the `longcat` model folder:**
+Official sharded checkpoint layouts:
 
 - ComfyUI/models/longcat/LongCat-Video-Avatar-1.5/base_model/
   config.json
