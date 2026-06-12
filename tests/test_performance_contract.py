@@ -155,11 +155,15 @@ class PerformanceContractTests(unittest.TestCase):
 
     def test_debug_profiler_is_opt_in_and_memory_only(self):
         source = Path("LongCat_Video/debug_profile.py").read_text(encoding="utf-8")
+        backend_source = Path("LongCat_Video/backend_capabilities.py").read_text(encoding="utf-8")
 
         self.assertIn("class LongCatDebugProfiler", source)
         self.assertIn("if not self.enabled", source)
-        self.assertIn("torch.cuda.synchronize", source)
-        self.assertIn("cuda_alloc_gb", source)
+        self.assertIn("synchronize(self.device)", source)
+        self.assertIn("read_memory_stats(self.device)", source)
+        self.assertIn("format_memory_fields", source)
+        self.assertIn("cuda_alloc_gb", backend_source)
+        self.assertIn("mps_alloc_gb", backend_source)
         self.assertIn("elapsed_s", source)
         self.assertNotIn("prompt", source)
         self.assertNotIn("audio_path", source)

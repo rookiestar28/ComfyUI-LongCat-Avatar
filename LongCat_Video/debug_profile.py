@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from time import perf_counter
 from typing import Any, Iterator
 
-import torch
+from LongCat_Video.backend_capabilities import format_memory_fields, read_memory_stats, synchronize
 
 
 class LongCatDebugProfiler:
@@ -20,13 +20,13 @@ class LongCatDebugProfiler:
             yield
             return
 
-        self._sync_cuda()
+        self._sync_backend()
         start = perf_counter()
         self.log(f"{name}.start", **fields)
         try:
             yield
         finally:
-            self._sync_cuda()
+            self._sync_backend()
             elapsed = perf_counter() - start
             self.log(f"{name}.end", elapsed_s=f"{elapsed:.3f}", **fields)
 
@@ -37,14 +37,14 @@ class LongCatDebugProfiler:
     def start_phase(self, name: str, **fields: Any) -> None:
         if not self.enabled:
             return
-        self._sync_cuda()
+        self._sync_backend()
         self._active_phases[name] = (perf_counter(), fields)
         self.log(f"{name}.start", **fields)
 
     def end_phase(self, name: str, **fields: Any) -> None:
         if not self.enabled:
             return
-        self._sync_cuda()
+        self._sync_backend()
         started = self._active_phases.pop(name, None)
         if started is None:
             self.log(f"{name}.end", elapsed_s="unknown", **fields)
@@ -61,25 +61,14 @@ class LongCatDebugProfiler:
     def log(self, event: str, **fields: Any) -> None:
         parts = [f"[DEBUG] LongCat profile {self.label}.{event}"]
         parts.extend(f"{key}={value}" for key, value in fields.items() if value is not None)
-        parts.extend(self._cuda_memory_fields())
+        parts.extend(self._backend_memory_fields())
         print(" | ".join(parts))
 
-    def _sync_cuda(self) -> None:
-        if not torch.cuda.is_available():
-            return
-        try:
-            torch.cuda.synchronize(device=self.device)
-        except Exception:
-            torch.cuda.synchronize()
+    def _sync_backend(self) -> None:
+        synchronize(self.device)
 
-    def _cuda_memory_fields(self) -> list[str]:
-        if not torch.cuda.is_available():
-            return []
-        return [
-            f"cuda_alloc_gb={torch.cuda.memory_allocated() / 1000 ** 3:.2f}",
-            f"cuda_reserved_gb={torch.cuda.memory_reserved() / 1000 ** 3:.2f}",
-            f"cuda_max_alloc_gb={torch.cuda.max_memory_allocated() / 1000 ** 3:.2f}",
-        ]
+    def _backend_memory_fields(self) -> list[str]:
+        return format_memory_fields(read_memory_stats(self.device))
 
 
 DISABLED_DEBUG_PROFILER = LongCatDebugProfiler(False)

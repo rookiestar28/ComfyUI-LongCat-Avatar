@@ -11,6 +11,7 @@ from comfy.utils import common_upscale
 import folder_paths
 import soundfile as sf
 import uuid
+from LongCat_Video.backend_capabilities import empty_cache, read_memory_stats
 cur_path = os.path.dirname(os.path.abspath(__file__))
 
 def audio2path(audio,):
@@ -41,15 +42,13 @@ def get_runtime_device():
     return mm.get_torch_device()
 
 
-def _cuda_empty_cache():
-    if hasattr(torch, "cuda") and torch.cuda.is_available():
-        torch.cuda.empty_cache()
+def _runtime_empty_cache():
+    empty_cache(get_runtime_device(), torch_module=torch)
 
 
-def _cuda_max_memory_allocated():
-    if hasattr(torch, "cuda") and torch.cuda.is_available():
-        return torch.cuda.max_memory_allocated()
-    return 0
+def _runtime_max_memory_allocated():
+    stats = read_memory_stats(get_runtime_device(), torch_module=torch)
+    return stats.max_allocated_bytes or stats.allocated_bytes or 0
 
 
 def clear_comfyui_cache(unload_loaded_models=False):
@@ -60,13 +59,13 @@ def clear_comfyui_cache(unload_loaded_models=False):
             except Exception as exc:
                 logging.warning("LongCat cache cleanup could not unpatch a loaded model: %s", exc)
     mm.soft_empty_cache()
-    _cuda_empty_cache()
-    max_gpu_memory = _cuda_max_memory_allocated()
+    _runtime_empty_cache()
+    max_gpu_memory = _runtime_max_memory_allocated()
     print(f"After Max GPU memory allocated: {max_gpu_memory / 1000 ** 3:.2f} GB")
 
 def gc_cleanup():
     gc.collect()
-    _cuda_empty_cache()
+    _runtime_empty_cache()
 
 
 def phi2narry(img):
