@@ -11,6 +11,7 @@ from LongCat_Video.attention_contract import (
     ATTENTION_MODE_SDPA,
     ATTENTION_MODE_XFORMERS,
     ATTENTION_MODES,
+    MPS_SAFE_ATTENTION_MODES,
     attention_config_fallback_warnings,
     attention_diagnostic_lines,
     apply_attention_mode_to_config,
@@ -18,6 +19,11 @@ from LongCat_Video.attention_contract import (
     inspect_attention_backend,
     normalize_attention_mode,
     validate_attention_mode_availability,
+    validate_attention_mode_for_device,
+)
+from LongCat_Video.mps_attention_probe import (
+    build_representative_attention_probe_spec,
+    run_mps_attention_equivalence_probe,
 )
 
 
@@ -157,6 +163,61 @@ class AttentionContractTests(unittest.TestCase):
         self.assertIn("attention_mode requested: sageattn", joined)
         self.assertIn("enable_sageattn=True", joined)
         self.assertIn("available via sageattention.sageattn", joined)
+
+    def test_mps_allows_only_explicit_sdpa_attention(self):
+        self.assertEqual(MPS_SAFE_ATTENTION_MODES, (ATTENTION_MODE_SDPA,))
+        self.assertTrue(validate_attention_mode_for_device(ATTENTION_MODE_SDPA, "mps").available)
+
+        for mode in (
+            ATTENTION_MODE_AUTO,
+            ATTENTION_MODE_FLASH_ATTN_2,
+            ATTENTION_MODE_FLASH_ATTN_3,
+            ATTENTION_MODE_XFORMERS,
+            ATTENTION_MODE_SAGEATTN,
+            ATTENTION_MODE_SAGEATTN_3,
+        ):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(RuntimeError, "limited to explicit 'sdpa'"):
+                    validate_attention_mode_for_device(mode, "mps")
+
+    def test_cuda_attention_validation_preserves_existing_sdpa_behavior(self):
+        self.assertTrue(validate_attention_mode_for_device(ATTENTION_MODE_SDPA, "cuda:0").available)
+
+    def test_attention_diagnostics_include_device_dtype_and_fallback_status(self):
+        lines = attention_diagnostic_lines(ATTENTION_MODE_SDPA, {}, device="mps", dtype="float16")
+        joined = "\n".join(lines)
+
+        self.assertIn("attention runtime: device=mps", joined)
+        self.assertIn("dtype=float16", joined)
+        self.assertIn("mps_cpu_fallback_enabled=", joined)
+        self.assertIn("attention backend 'sdpa': available", joined)
+
+    def test_mps_attention_probe_spec_and_skip_states_are_explicit(self):
+        spec = build_representative_attention_probe_spec()
+
+        self.assertEqual(spec.device, "mps")
+        self.assertEqual(spec.attention_backend, "sdpa")
+        self.assertEqual(spec.query_tokens, 256)
+        self.assertEqual(spec.key_tokens, 256)
+
+        fallback_result = run_mps_attention_equivalence_probe(
+            spec,
+            torch_module=SimpleNamespace(),
+            environ={"PYTORCH_ENABLE_MPS_FALLBACK": "1"},
+        )
+        self.assertEqual(fallback_result.status, "skipped")
+        self.assertTrue(fallback_result.cpu_fallback_enabled)
+        self.assertFalse(fallback_result.native_mps)
+
+        unavailable_result = run_mps_attention_equivalence_probe(
+            spec,
+            torch_module=SimpleNamespace(
+                backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
+            ),
+            environ={},
+        )
+        self.assertEqual(unavailable_result.status, "skipped")
+        self.assertIn("MPS backend is not available", unavailable_result.reason)
 
 
 if __name__ == "__main__":

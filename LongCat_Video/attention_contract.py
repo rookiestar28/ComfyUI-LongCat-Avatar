@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 
+from LongCat_Video.backend_capabilities import mps_cpu_fallback_enabled, normalize_backend_type
+
 
 ATTENTION_MODE_AUTO = "auto"
 ATTENTION_MODE_SDPA = "sdpa"
@@ -21,6 +23,7 @@ ATTENTION_MODES = (
     ATTENTION_MODE_SAGEATTN,
     ATTENTION_MODE_SAGEATTN_3,
 )
+MPS_SAFE_ATTENTION_MODES = (ATTENTION_MODE_SDPA,)
 
 _ATTENTION_FLAG_DEFAULTS = {
     "enable_flashattn2": False,
@@ -163,11 +166,22 @@ def validate_attention_mode_availability(attention_mode) -> AttentionBackendStat
     return status
 
 
+def validate_attention_mode_for_device(attention_mode, device) -> AttentionBackendStatus:
+    mode = normalize_attention_mode(attention_mode)
+    if normalize_backend_type(device) == "mps" and mode not in MPS_SAFE_ATTENTION_MODES:
+        raise RuntimeError(
+            f"attention_mode '{mode}' is not supported on MPS. "
+            "MPS attention is limited to explicit 'sdpa' until Apple Silicon CPU-vs-MPS "
+            "shape probes pass without CPU fallback."
+        )
+    return validate_attention_mode_availability(mode)
+
+
 def attention_config_flags(config) -> dict[str, bool]:
     return {key: bool(config.get(key, False)) for key in _ATTENTION_FLAG_DEFAULTS}
 
 
-def attention_diagnostic_lines(attention_mode, config) -> tuple[str, ...]:
+def attention_diagnostic_lines(attention_mode, config, *, device=None, dtype=None) -> tuple[str, ...]:
     mode = normalize_attention_mode(attention_mode)
     flags = attention_config_flags(config)
     enabled_modes = [
@@ -178,6 +192,10 @@ def attention_diagnostic_lines(attention_mode, config) -> tuple[str, ...]:
     status = inspect_attention_backend(mode)
     lines = [
         f"[INFO] LongCat attention_mode requested: {mode}",
+        "[INFO] LongCat attention runtime: "
+        f"device={normalize_backend_type(device) if device is not None else 'unknown'}, "
+        f"dtype={dtype if dtype is not None else 'unknown'}, "
+        f"mps_cpu_fallback_enabled={mps_cpu_fallback_enabled()}",
         "[INFO] LongCat attention flags: "
         + ", ".join(f"{key}={value}" for key, value in flags.items()),
         f"[INFO] LongCat attention backend '{status.mode}': "

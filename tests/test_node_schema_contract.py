@@ -241,6 +241,19 @@ class NodeSchemaContractTests(unittest.TestCase):
         }
         self.assertTrue(forbidden_names.isdisjoint({port.name for port in schema.inputs}))
 
+    def test_model_execute_rejects_mps_auto_attention_before_loading(self):
+        with loaded_longcat_node_module() as node_module:
+            node_module.get_runtime_device = lambda: "mps"
+
+            with self.assertRaisesRegex(RuntimeError, "limited to explicit 'sdpa'"):
+                node_module.LongCat_Video_SM_Model.execute(
+                    inference_weight_mode="single_file_safetensors",
+                    attention_mode="auto",
+                    auto_download_missing_weights=True,
+                    vae="none",
+                    lora="none",
+                )
+
     def test_model_mode_resolves_autoload_sources(self):
         with loaded_longcat_node_module() as node_module:
             self.assertEqual(

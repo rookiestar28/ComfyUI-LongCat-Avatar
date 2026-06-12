@@ -43,7 +43,7 @@ from .LongCat_Video.text_conditioning import (
     validate_text_conditioning_payload,
 )
 from .LongCat_Video.video_output import save_muxed_video, validate_mux_audio_path
-from .LongCat_Video.attention_contract import ATTENTION_MODES
+from .LongCat_Video.attention_contract import ATTENTION_MODES, validate_attention_mode_for_device
 from .LongCat_Video.checkpoint_contract import (
     OFFICIAL_INT8_SHARDED,
     OFFICIAL_SHARDED,
@@ -147,6 +147,7 @@ class LongCat_Video_SM_Model(io.ComfyNode):
             )
     @classmethod
     def execute(cls, inference_weight_mode,attention_mode,auto_download_missing_weights,vae,lora) -> io.NodeOutput:
+        validate_attention_mode_for_device(attention_mode, get_runtime_device())
         clear_comfyui_cache()
         diffusion_models = _resolve_single_file_model_name(inference_weight_mode)
         dit_path=folder_paths.get_full_path("diffusion_models",diffusion_models) if diffusion_models is not None else None
