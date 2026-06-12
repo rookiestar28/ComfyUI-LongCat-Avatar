@@ -14,6 +14,7 @@ from .LongCat_Video.audio_contract import (
     validate_audio_conditioning_payload,
     validate_longcat_avatar_whisper_model_name,
 )
+from .LongCat_Video.backend_capabilities import empty_cache as backend_empty_cache
 from .LongCat_Video.audio_crop import crop_audio_payload
 from .LongCat_Video.backend_dtype_policy import resolve_backend_dtype_policy
 from .LongCat_Video.bbox_contract import parse_person_boxes
@@ -266,7 +267,11 @@ class LongCat_Video_SM_Sampler(io.ComfyNode):
                         model.use_distill,debug_profile=debug_profile.child("single"))
         finally:
             with debug_profile.phase("cleanup_runtime_plan"):
-                cleanup_runtime_plan(model, runtime_plan, empty_cache=torch.cuda.empty_cache)
+                cleanup_runtime_plan(
+                    model,
+                    runtime_plan,
+                    empty_cache=lambda: backend_empty_cache(runtime_plan.device, torch_module=torch),
+                )
         with debug_profile.phase("save_muxed_video", enabled=bool(request.mux_audio_path), mode=request.mode):
             video_path = save_muxed_video(
                 image,

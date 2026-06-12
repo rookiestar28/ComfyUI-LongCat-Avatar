@@ -19,6 +19,7 @@ from .modules.autoencoder_kl_wan import AutoencoderKLWan
 from .modules.avatar.longcat_video_dit_avatar import LongCatVideoAvatarTransformer3DModel
 #from .context_parallel import context_parallel_util
 from .utils.bukcet_config import get_bucket_config
+from ..backend_capabilities import empty_cache, move_to_device, normalize_backend_type
 from ..backend_dtype_policy import randn_for_device
 from ..layer_streaming import _streaming_model
 from ..debug_profile import ensure_debug_profiler
@@ -34,9 +35,10 @@ from diffusers.image_processor import is_valid_image, is_valid_image_imagelist
 import warnings
 
 
-def torch_gc():
-    torch.cuda.empty_cache()
-    torch.cuda.ipc_collect()
+def torch_gc(device="cuda"):
+    empty_cache(device, torch_module=torch)
+    if normalize_backend_type(device) == "cuda" and hasattr(torch, "cuda") and torch.cuda.is_available():
+        torch.cuda.ipc_collect()
 
 @torch.no_grad()
 def get_audio_embedding_whisper_(audio_encoder,speech_array, fps=25, device='cpu', sample_rate=16000):
@@ -611,7 +613,7 @@ class LongCatVideoAvatarPipeline:
     def _clear_cache(self):
         self.kv_cache_dict = None
         gc.collect()
-        torch.cuda.empty_cache()
+        empty_cache(self.device, torch_module=torch)
 
     def get_condition_shape(self, condition, resolution, scale_factor_spatial=32):
         bucket_config = get_bucket_config(resolution, scale_factor_spatial=scale_factor_spatial)
@@ -1054,7 +1056,7 @@ class LongCatVideoAvatarPipeline:
 
         self._current_timestep = None
         with debug_profile.phase("vae_to_device_for_decode"):
-            self.vae = self.vae.to(device, non_blocking=True)
+            self.vae = move_to_device(self.vae, device)
         if output_type == 'latent':
             return latents
 
@@ -1357,7 +1359,7 @@ class LongCatVideoAvatarPipeline:
         debug_profile.end_phase("denoising_loop")
         self._current_timestep = None
         with debug_profile.phase("vae_to_device_for_decode"):
-            self.vae = self.vae.to(device, non_blocking=True)
+            self.vae = move_to_device(self.vae, device)
         if output_type == 'latent':
             return latents
 
@@ -1749,7 +1751,7 @@ class LongCatVideoAvatarPipeline:
         self._current_timestep = None
 
         with debug_profile.phase("vae_to_device_for_decode"):
-            self.vae = self.vae.to(device, non_blocking=True)
+            self.vae = move_to_device(self.vae, device)
         if output_type == 'latent':
             return latents
 
@@ -1772,11 +1774,11 @@ class LongCatVideoAvatarPipeline:
     def vae_to(self, device: str | torch.device):
         self.device = device
         if self.vae is not None:
-            self.vae = self.vae.to(device, non_blocking=True)
+            self.vae = move_to_device(self.vae, device)
         # if hasattr(self.dit, 'lora_dict') and self.dit.lora_dict:
         #     for lora_key, lora_network in self.dit.lora_dict.items():
         #         for lora in lora_network.loras:
-        #             lora.to(device, non_blocking=True)
+        #             move_to_device(lora, device)
         return self
 
     def to(self, device: str | torch.device):
@@ -1791,15 +1793,15 @@ class LongCatVideoAvatarPipeline:
         """
         self.device = device
         if self.dit is not None:
-            self.dit = self.dit.to(device, non_blocking=True)
+            self.dit = move_to_device(self.dit, device)
             if hasattr(self.dit, 'lora_dict') and self.dit.lora_dict:
                 for lora_key, lora_network in self.dit.lora_dict.items():
                     for lora in lora_network.loras:
-                        lora.to(device, non_blocking=True)
+                        move_to_device(lora, device)
         if self.text_encoder is not None:
-            self.text_encoder = self.text_encoder.to(device, non_blocking=True)
+            self.text_encoder = move_to_device(self.text_encoder, device)
         if self.vae is not None:
-            self.vae = self.vae.to(device, non_blocking=True)
+            self.vae = move_to_device(self.vae, device)
         return self
 
     def vae_offload(self):
@@ -1807,6 +1809,6 @@ class LongCatVideoAvatarPipeline:
             vae_offload_device = str(getattr(self, "vae_offload_device", "cpu")).lower()
             # IMPORTANT: offload_device=cuda intentionally keeps VAE resident; do not hard-code CPU here.
             target_device = self.device if vae_offload_device == "cuda" else "cpu"
-            self.vae = self.vae.to(target_device, non_blocking=True)
-        torch_gc()
+            self.vae = move_to_device(self.vae, target_device)
+        torch_gc(getattr(self, "device", "cuda"))
         return self

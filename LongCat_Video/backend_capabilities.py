@@ -290,6 +290,17 @@ def format_memory_fields(stats: BackendMemoryStats) -> list[str]:
     return []
 
 
+def move_to_device(value: Any, device: Any, *, dtype: Any = None) -> Any:
+    kwargs = {"non_blocking": device_supports_non_blocking(device)}
+    if dtype is not None:
+        kwargs["dtype"] = dtype
+    try:
+        return value.to(device, **kwargs)
+    except TypeError:
+        kwargs.pop("non_blocking", None)
+        return value.to(device, **kwargs)
+
+
 def probe_bfloat16_support(device: Any, *, torch_module: Any = torch) -> BFloat16ProbeResult:
     backend = normalize_backend_type(device)
     if not _backend_available(backend, torch_module):

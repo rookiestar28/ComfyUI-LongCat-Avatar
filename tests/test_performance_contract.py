@@ -138,6 +138,8 @@ class PerformanceContractTests(unittest.TestCase):
     def test_streaming_model_teardown_removes_forward_hooks(self):
         source = Path("LongCat_Video/layer_streaming.py").read_text(encoding="utf-8")
 
+        self.assertIn("require_cuda_streaming_device(target_device)", source)
+        self.assertIn("disabled for MPS", source)
         self.assertIn("self._hook_handles", source)
         self.assertIn("self._hook_handles.extend((pre_hook, post_hook))", source)
         self.assertIn("handle.remove()", source)
@@ -188,6 +190,20 @@ class PerformanceContractTests(unittest.TestCase):
         self.assertGreaterEqual(source.count("denoising_loop"), 5)
         self.assertGreaterEqual(source.count("vae_decode"), 3)
         self.assertGreaterEqual(source.count("postprocess_video"), 3)
+
+    def test_avatar_pipeline_uses_backend_transfer_helper_for_mps(self):
+        source = Path("LongCat_Video/longcat_video/pipeline_longcat_video_avatar.py").read_text(encoding="utf-8")
+
+        self.assertIn("move_to_device", source)
+        self.assertNotIn("non_blocking=True", source)
+        self.assertIn("empty_cache(self.device", source)
+        self.assertIn('torch_gc(getattr(self, "device", "cuda"))', source)
+
+    def test_sampler_cleanup_uses_backend_empty_cache(self):
+        source = Path("LongCat_Video_node.py").read_text(encoding="utf-8")
+
+        self.assertIn("backend_empty_cache(runtime_plan.device", source)
+        self.assertNotIn("empty_cache=torch.cuda.empty_cache", source)
 
     def test_avatar_continuation_keeps_kv_cache_on_gpu(self):
         for path in AVATAR_GENERATION_SOURCE_PATHS:

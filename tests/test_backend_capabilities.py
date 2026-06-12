@@ -7,6 +7,7 @@ from LongCat_Video.backend_capabilities import (
     empty_cache,
     format_memory_fields,
     mps_cpu_fallback_enabled,
+    move_to_device,
     normalize_backend_type,
     probe_bfloat16_support,
     read_memory_stats,
@@ -87,6 +88,15 @@ class FakeTorch:
             raise TypeError("BFloat16 is not supported on MPS")
         self.empty_calls.append((shape, str(device), dtype))
         return object()
+
+
+class FakeMovable:
+    def __init__(self):
+        self.calls = []
+
+    def to(self, device, **kwargs):
+        self.calls.append((device, kwargs))
+        return self
 
 
 class BackendCapabilitiesTests(unittest.TestCase):
@@ -178,6 +188,20 @@ class BackendCapabilitiesTests(unittest.TestCase):
         self.assertFalse(synchronize("cpu", torch_module=fake_torch).success)
         self.assertFalse(read_memory_stats("cpu", torch_module=fake_torch).available)
         self.assertFalse(mps_cpu_fallback_enabled({"PYTORCH_ENABLE_MPS_FALLBACK": "0"}))
+
+    def test_move_to_device_disables_non_blocking_for_mps(self):
+        value = FakeMovable()
+
+        self.assertIs(move_to_device(value, "mps", dtype="float16"), value)
+
+        self.assertEqual(value.calls, [("mps", {"non_blocking": False, "dtype": "float16"})])
+
+    def test_move_to_device_preserves_non_blocking_for_cuda(self):
+        value = FakeMovable()
+
+        move_to_device(value, "cuda:0")
+
+        self.assertEqual(value.calls, [("cuda:0", {"non_blocking": True})])
 
 
 if __name__ == "__main__":

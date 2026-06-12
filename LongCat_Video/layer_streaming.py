@@ -32,6 +32,8 @@ from torch import nn
 from contextlib import contextmanager
 from collections.abc import Iterator
 
+from LongCat_Video.backend_capabilities import normalize_backend_type
+
 logger = logging.getLogger(__name__)
 _M = TypeVar("_M", bound=torch.nn.Module)
 T = TypeVar("T")
@@ -41,6 +43,13 @@ def cleanup_memory() -> None:
     gc.collect()
     torch.cuda.empty_cache()
     torch.cuda.synchronize()
+
+
+def require_cuda_streaming_device(target_device: torch.device) -> None:
+    if normalize_backend_type(target_device) != "cuda":
+        raise RuntimeError(
+            "Layer streaming uses CUDA streams and record_stream; it is disabled for MPS in this branch."
+        )
 
 # LayerStreamingWrapper from https://github.com/Lightricks/LTX-2
 
@@ -142,6 +151,7 @@ def _streaming_model(
     prefetch_count: int,
 ) -> Iterator[_M]:
     """Wrap *model* with :class:`LayerStreamingWrapper`, yield it, then tear down."""
+    require_cuda_streaming_device(target_device)
     # 根据传入的 layers_attr 类型自动路由到对应的 Wrapper
     if isinstance(layers_attr, list):
         wrapped = SimpleLayerStreamingWrapper_Dual(
@@ -180,6 +190,7 @@ def _streaming_model_(
     prefetch_count: int,
 ) -> Iterator[_M]:
     """Wrap *model* with :class:`LayerStreamingWrapper`, yield it, then tear down."""
+    require_cuda_streaming_device(target_device)
     wrapped = SimpleLayerStreamingWrapper(
         model,
         layers_attr=layers_attr,
