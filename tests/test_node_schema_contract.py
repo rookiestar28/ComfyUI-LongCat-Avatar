@@ -171,6 +171,34 @@ class NodeSchemaContractTests(unittest.TestCase):
         self.assertEqual(result, (expected,))
         self.assertEqual(calls[0]["layout"], "layout")
         self.assertEqual(calls[0]["offload_device"], "cpu")
+        self.assertEqual(calls[0]["dtype"], "bfloat16")
+
+    def test_text_encode_execute_uses_mps_auto_fp16_policy(self):
+        with loaded_longcat_node_module() as node_module:
+            calls = []
+            expected = {"te": "official"}
+            node_module.clear_comfyui_cache = lambda: None
+            node_module.get_runtime_device = lambda: "mps"
+            node_module.resolve_or_download_official_text_encoder_layout = lambda *args, **kwargs: "layout"
+
+            def fake_encode(**kwargs):
+                calls.append(kwargs)
+                return expected
+
+            node_module.encode_official_text_conditioning = fake_encode
+
+            result = node_module.LongCat_Video_SM_Encode.execute(
+                clip=None,
+                text_encoder_root="LongCat-Video",
+                auto_download_missing_text_encoder=True,
+                offload_device="cpu",
+                prompt="prompt",
+                negative_prompt="negative",
+            )
+
+        self.assertEqual(result, (expected,))
+        self.assertEqual(calls[0]["device"], "mps")
+        self.assertEqual(calls[0]["dtype"], "float16")
 
     def test_text_encode_execute_uses_clip_fallback_when_clip_is_connected(self):
         with loaded_longcat_node_module() as node_module:

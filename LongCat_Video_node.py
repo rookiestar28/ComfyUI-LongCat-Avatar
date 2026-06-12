@@ -15,6 +15,7 @@ from .LongCat_Video.audio_contract import (
     validate_longcat_avatar_whisper_model_name,
 )
 from .LongCat_Video.audio_crop import crop_audio_payload
+from .LongCat_Video.backend_dtype_policy import resolve_backend_dtype_policy
 from .LongCat_Video.bbox_contract import parse_person_boxes
 from .LongCat_Video.model_contract import (
     AVATAR_MAX_GUIDANCE_SCALE,
@@ -306,6 +307,7 @@ class LongCat_Video_SM_Encode(io.ComfyNode):
         negative_prompt="",
     ) -> io.NodeOutput:
         runtime_device = get_runtime_device()
+        dtype_policy = resolve_backend_dtype_policy(runtime_device, torch_module=torch)
         if clip is None:
             # CRITICAL: official path is preferred; connected legacy CLIP input deliberately selects single-file UMT5 fallback.
             layout = resolve_or_download_official_text_encoder_layout(
@@ -319,7 +321,7 @@ class LongCat_Video_SM_Encode(io.ComfyNode):
                 negative_prompt=negative_prompt,
                 device=runtime_device,
                 offload_device=offload_device,
-                dtype=torch.bfloat16,
+                dtype=dtype_policy.text_encoder_dtype,
             )
             clear_comfyui_cache()
             return io.NodeOutput(te_cond)
@@ -337,8 +339,8 @@ class LongCat_Video_SM_Encode(io.ComfyNode):
         negative_prompt_embeds = negative_prompt_embeds.repeat(1, 1, 1)
         negative_prompt_embeds = negative_prompt_embeds.view(1, 1, seq_len, -1)
         te_cond={
-            "prompt_embeds":prompt_embeds.to(runtime_device,torch.bfloat16),
-            "negative_prompt_embeds":negative_prompt_embeds.to(runtime_device,torch.bfloat16),
+            "prompt_embeds":prompt_embeds.to(runtime_device,dtype_policy.text_encoder_dtype),
+            "negative_prompt_embeds":negative_prompt_embeds.to(runtime_device,dtype_policy.text_encoder_dtype),
             "text":[prompt,negative_prompt],
             "conditioning_source": TEXT_CONDITIONING_SOURCE_CLIP,
         } # #torch.Size([1, 1, 512, 4096])

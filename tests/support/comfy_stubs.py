@@ -155,6 +155,8 @@ def _install_torch_stub(patcher: _ModulePatcher) -> None:
     torch_stub = _module(
         "torch",
         bfloat16="bfloat16",
+        float16="float16",
+        float32="float32",
         cuda=cuda,
         backends=types.SimpleNamespace(mps=mps),
         device=lambda name: name,

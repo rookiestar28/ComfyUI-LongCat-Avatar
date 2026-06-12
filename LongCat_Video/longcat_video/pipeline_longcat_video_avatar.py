@@ -19,6 +19,7 @@ from .modules.autoencoder_kl_wan import AutoencoderKLWan
 from .modules.avatar.longcat_video_dit_avatar import LongCatVideoAvatarTransformer3DModel
 #from .context_parallel import context_parallel_util
 from .utils.bukcet_config import get_bucket_config
+from ..backend_dtype_policy import randn_for_device
 from ..layer_streaming import _streaming_model
 from ..debug_profile import ensure_debug_profiler
 from contextlib import AbstractContextManager
@@ -486,7 +487,7 @@ class LongCatVideoAvatarPipeline:
                 )
 
             # Generate random noise with shape latent_shape
-            latents = torch.randn(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_for_device(shape, generator=generator, device=device, dtype=dtype, torch_module=torch)
 
         if image is not None or video is not None:
             if isinstance(generator, list):
