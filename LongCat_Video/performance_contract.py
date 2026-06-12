@@ -10,10 +10,11 @@ OFFICIAL_DEFAULT_BASE_PRECISION = "bf16"
 SUPPORTED_BASE_PRECISIONS = (OFFICIAL_DEFAULT_BASE_PRECISION,)
 DISABLED_FP8_MODE = "disabled"
 OFFICIAL_INT8_SHARDED_SOURCE = "official_int8_sharded"
-MPS_EXPERIMENTAL_BRANCH = "mps/experimental-feasibility"
+MPS_EXPERIMENTAL_BRANCH = "macos-mps"
 MPS_NON_MERGE_CONDITION = (
-    "Do not merge MPS inference into main until model load, audio encode, attention fallback, "
-    "VAE encode/decode, and end-to-end smoke inference evidence exists on Apple Silicon."
+    "MPS inference work is restricted to the macos-mps branch. Do not merge MPS inference into main "
+    "until model load, audio encode, attention fallback, VAE encode/decode, and end-to-end smoke "
+    "inference evidence exists on Apple Silicon, followed by full validation and review."
 )
 
 

@@ -18,6 +18,7 @@ class MPSFeasibilityContractTests(unittest.TestCase):
         self.assertEqual(report.attention_backend, "sdpa")
         self.assertGreaterEqual(len(report.cuda_only_assumptions), 4)
         self.assertGreaterEqual(len(report.initialization_blockers), 3)
+        self.assertIn("macos-mps branch", report.non_merge_condition)
         self.assertIn("Do not merge MPS inference into main", report.non_merge_condition)
 
     def test_mps_still_fails_fast_on_current_runtime_contract(self):
