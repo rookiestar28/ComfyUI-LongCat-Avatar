@@ -63,6 +63,21 @@ class DependencyContractTests(unittest.TestCase):
         )
         self.assertIn("requires optional vocal separation dependencies", single_source)
 
+    def test_block_sparse_triton_import_is_optional_for_mps_node_startup(self):
+        path = ROOT / "LongCat_Video" / "longcat_video" / "block_sparse_attention" / "bsa_interface.py"
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                self.assertFalse(any(alias.name == "triton" for alias in node.names))
+            elif isinstance(node, ast.ImportFrom):
+                self.assertNotEqual(node.module, "triton")
+                self.assertNotEqual(node.module, "triton.language")
+
+        self.assertIn("macOS/MPS must be able to import ComfyUI nodes without Triton", source)
+        self.assertIn("Use the SDPA attention backend on macOS MPS", source)
+
 
 if __name__ == "__main__":
     unittest.main()

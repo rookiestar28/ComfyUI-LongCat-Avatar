@@ -1,15 +1,66 @@
 import os
 import torch
 import torch.nn.functional as F
-import triton
-import triton.language as tl
 import math
 
-from .common import _attn_fwd_gating, _attn_bwd_preprocess, configs_gating_preset
-from .flash_attn_bsa_varlen_mask import (
-    _attn_fwd_bsa_varlen, _attn_fwd_bsa_varlen_align, _attn_bwd_dkdv_bsa_varlen_wrapper, _attn_bwd_dq_bsa_varlen_wrapper, _attn_bwd_dq_bsa_varlen_align_wrapper,
-    configs_fwd_bsa_varlen_preset, configs_fwd_bsa_varlen_align_preset, configs_bwd_dkdv_bsa_varlen_preset, configs_bwd_dq_bsa_varlen_preset, configs_bwd_dq_bsa_varlen_align_preset
+class _UnavailableTritonKernel:
+    def __getitem__(self, _grid):
+        return self
+
+    def __call__(self, *_args, **_kwargs):
+        raise RuntimeError(_TRITON_UNAVAILABLE_MESSAGE) from _TRITON_IMPORT_ERROR
+
+
+class _UnavailableTriton:
+    def jit(self, fn=None, **_kwargs):
+        if fn is None:
+            return lambda wrapped: wrapped
+        return fn
+
+    def cdiv(self, *_args, **_kwargs):
+        raise RuntimeError(_TRITON_UNAVAILABLE_MESSAGE) from _TRITON_IMPORT_ERROR
+
+
+class _UnavailableTritonLanguage:
+    pass
+
+
+_TRITON_UNAVAILABLE_MESSAGE = (
+    "Block-sparse attention requires Triton/CUDA and is unavailable on this runtime. "
+    "Use the SDPA attention backend on macOS MPS."
 )
+
+
+try:
+    import triton
+    import triton.language as tl
+
+    from .common import _attn_fwd_gating, _attn_bwd_preprocess, configs_gating_preset
+    from .flash_attn_bsa_varlen_mask import (
+        _attn_fwd_bsa_varlen, _attn_fwd_bsa_varlen_align, _attn_bwd_dkdv_bsa_varlen_wrapper, _attn_bwd_dq_bsa_varlen_wrapper, _attn_bwd_dq_bsa_varlen_align_wrapper,
+        configs_fwd_bsa_varlen_preset, configs_fwd_bsa_varlen_align_preset, configs_bwd_dkdv_bsa_varlen_preset, configs_bwd_dq_bsa_varlen_preset, configs_bwd_dq_bsa_varlen_align_preset
+    )
+
+    _TRITON_IMPORT_ERROR = None
+except Exception as exc:
+    # IMPORTANT: macOS/MPS must be able to import ComfyUI nodes without Triton.
+    # The CUDA-only block-sparse path raises at runtime if selected.
+    triton = _UnavailableTriton()
+    tl = _UnavailableTritonLanguage()
+    _TRITON_IMPORT_ERROR = exc
+    _attn_fwd_gating = _UnavailableTritonKernel()
+    _attn_bwd_preprocess = _UnavailableTritonKernel()
+    _attn_fwd_bsa_varlen = _UnavailableTritonKernel()
+    _attn_fwd_bsa_varlen_align = _UnavailableTritonKernel()
+    _attn_bwd_dkdv_bsa_varlen_wrapper = _UnavailableTritonKernel()
+    _attn_bwd_dq_bsa_varlen_wrapper = _UnavailableTritonKernel()
+    _attn_bwd_dq_bsa_varlen_align_wrapper = _UnavailableTritonKernel()
+    configs_gating_preset = {"default": {}}
+    configs_fwd_bsa_varlen_preset = {"default": {}, "BLOCK_N_LG=64": {}}
+    configs_fwd_bsa_varlen_align_preset = {"default": {}, "BLOCK_N_LG=64": {}}
+    configs_bwd_dkdv_bsa_varlen_preset = {"default": {}, "BLOCK_N_DQ_LG=64": {}}
+    configs_bwd_dq_bsa_varlen_preset = {"default": {}, "BLOCK_N_DQ_LG=64": {}}
+    configs_bwd_dq_bsa_varlen_align_preset = {"default": {}, "BLOCK_N_DQ_LG=64": {}}
 
 from .communicate import p2p_communicate
 
@@ -18,17 +69,20 @@ from ..context_parallel import context_parallel_util
 torch._dynamo.config.cache_size_limit = 32
 
 def is_cuda():
+    if _TRITON_IMPORT_ERROR is not None:
+        return False
     return triton.runtime.driver.active.get_current_target().backend == "cuda"
 
 def supports_tma():
     return is_cuda() and torch.cuda.get_device_capability()[0] >= 9
 
-HAS_TMA_DESC = "nv_tma_desc_type" in dir(tl)
+HAS_TMA_DESC = _TRITON_IMPORT_ERROR is None and "nv_tma_desc_type" in dir(tl)
 
-if HAS_TMA_DESC:
-    print("TMA benchmarks will be running with experimental grid constant TMA descriptor.", )
-else:
-    print("TMA benchmarks will be running without grid constant TMA descriptor.", )
+if _TRITON_IMPORT_ERROR is None:
+    if HAS_TMA_DESC:
+        print("TMA benchmarks will be running with experimental grid constant TMA descriptor.", )
+    else:
+        print("TMA benchmarks will be running without grid constant TMA descriptor.", )
 
 
 # TmaAutoTuneHelper used in htyu's PR #5622
@@ -621,6 +675,9 @@ def flash_attn_bsa_3d(
     chunk_3d_shape_q=[4, 4, 8],
     chunk_3d_shape_k=[4, 4, 8],
 ) -> torch.Tensor:
+    if _TRITON_IMPORT_ERROR is not None:
+        raise RuntimeError(_TRITON_UNAVAILABLE_MESSAGE) from _TRITON_IMPORT_ERROR
+
     _, _, Sq, head_dim_q = q.shape
     _, _, Sk, head_dim_k = k.shape
 
