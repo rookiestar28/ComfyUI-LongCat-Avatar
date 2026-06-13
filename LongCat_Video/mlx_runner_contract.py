@@ -385,7 +385,7 @@ class MlxRunnerResponse:
                 role="frames_path",
                 require_exists=require_artifacts,
             )
-            if not video_path and not frames_path:
+            if require_artifacts and not video_path and not frames_path:
                 raise ValueError("success response must include video_path or frames_path.")
             return cls(
                 schema_version=_validate_schema_version(mapping["schema_version"]),

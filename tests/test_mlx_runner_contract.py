@@ -170,6 +170,26 @@ class MlxRunnerContractTests(unittest.TestCase):
         self.assertEqual(loaded.variant, "q4-merged")
         self.assertEqual(loaded.timings["inference_seconds"], 1.25)
 
+    def test_success_response_allows_no_artifacts_for_dry_run_validation(self):
+        response = MlxRunnerResponse.from_mapping(
+            {
+                "schema_version": MLX_RUNNER_SCHEMA_VERSION,
+                "status": "ok",
+                "variant": "q4-merged",
+                "video_path": "",
+                "frames_path": "",
+                "timings": {},
+                "runtime": {"mode": "dry-run"},
+                "warnings": ["dry-run: generation not executed."],
+            },
+            output_dir=self.output_dir,
+            require_artifacts=False,
+        )
+
+        self.assertEqual(response.status, "ok")
+        self.assertEqual(response.video_path, "")
+        self.assertEqual(response.frames_path, "")
+
     def test_success_response_rejects_artifact_escape(self):
         outside = self.root / "escape.mp4"
         outside.write_bytes(b"fake")
