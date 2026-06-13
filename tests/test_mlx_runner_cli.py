@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from LongCat_Video.mlx_runner_cli import (
     MlxRunnerArtifacts,
@@ -281,6 +282,30 @@ class MlxRunnerCliTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertNotIn(prompt, output.getvalue())
         self.assertIn("prompt_chars", output.getvalue())
+
+    def test_default_generation_backend_uses_real_mlx_backend_adapter(self):
+        request_path = self.write_request()
+        response_path = self.response_path()
+
+        def fake_generation(request, *, variant_dir=None):
+            frames_path = Path(request.output_dir) / "result.npy"
+            frames_path.write_bytes(b"frames")
+            return {
+                "frames_path": str(frames_path),
+                "timings": {"inference_seconds": 1.0},
+                "runtime": {"backend": "fake-mlx"},
+                "warnings": (),
+            }
+
+        with patch("LongCat_Video.mlx_generation_backend.run_mlx_generation", fake_generation):
+            code = run_mlx_runner(
+                MlxRunnerOptions(str(request_path), str(response_path), mode="generate"),
+                environment_report=self.environment_report(),
+            )
+
+        self.assertEqual(code, 0)
+        response = load_mlx_runner_response_json(response_path, output_dir=self.output_dir)
+        self.assertEqual(response.runtime["backend"], "fake-mlx")
 
 
 if __name__ == "__main__":

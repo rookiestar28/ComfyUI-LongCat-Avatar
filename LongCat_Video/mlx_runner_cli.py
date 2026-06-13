@@ -158,11 +158,9 @@ def _default_generation_backend(
     weights: MlxWeightValidationReport,
     environment: MlxRunnerEnvironmentReport | None,
 ) -> MlxRunnerArtifacts:
-    raise MlxRunnerCliError(
-        "MLX generation backend is not configured for this runner invocation.",
-        stage="load",
-        diagnostics={"variant": request.variant, "weights_complete": weights.is_complete},
-    )
+    from .mlx_generation_backend import run_mlx_generation
+
+    return _coerce_artifacts(run_mlx_generation(request, variant_dir=weights.variant_dir))
 
 
 def _coerce_artifacts(value: MlxRunnerArtifacts | MlxRunnerResponse | Mapping[str, Any]) -> MlxRunnerArtifacts:

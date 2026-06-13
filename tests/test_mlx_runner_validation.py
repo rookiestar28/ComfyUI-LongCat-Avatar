@@ -118,6 +118,24 @@ class MlxRunnerValidationTests(unittest.TestCase):
         self.assertTrue(any("transformers" in issue for issue in report.issues))
         self.assertTrue(any("Install missing MLX runner dependency" in issue for issue in report.issues))
 
+    def test_environment_report_requires_external_longcat_mlx_package(self):
+        report = build_mlx_environment_report(
+            {
+                "executable_exists": True,
+                "python_executable": sys.executable,
+                "python_version": "3.12.0",
+                "platform_system": "Darwin",
+                "platform_machine": "arm64",
+                "unified_memory_bytes": 32 * 1024**3,
+                "dependencies": _dependency_probe(missing={"longcat_video_avatar"}),
+            },
+            runner_python=sys.executable,
+            variant="q4-merged",
+        )
+
+        self.assertFalse(report.is_generation_candidate)
+        self.assertTrue(any("longcat-video-avatar-mlx" in issue for issue in report.issues))
+
     def test_weights_root_accepts_complete_q4_layout(self):
         self.build_variant_layout("q4-merged", quant_bits=4)
 

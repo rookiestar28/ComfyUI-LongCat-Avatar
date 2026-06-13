@@ -43,6 +43,8 @@ MLX_RUNNER_DEPENDENCIES = (
     MlxRunnerDependencyRequirement("imageio", "imageio", "video export"),
     MlxRunnerDependencyRequirement("imageio_ffmpeg", "imageio-ffmpeg", "MP4 export backend"),
     MlxRunnerDependencyRequirement("transformers", "transformers", "Whisper and umT5 tokenizers"),
+    MlxRunnerDependencyRequirement("mlx_arsenal", "mlx-arsenal", "FlowMatch scheduler"),
+    MlxRunnerDependencyRequirement("longcat_video_avatar", "longcat-video-avatar-mlx", "MLX LongCat pipeline"),
 )
 
 _REQUIRED_COMPONENT_FILES = {
