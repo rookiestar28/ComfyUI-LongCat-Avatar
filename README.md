@@ -57,6 +57,29 @@ pip install -r requirements.txt
 
 Use the Python environment that launches ComfyUI. The runtime path is CUDA-oriented and expects a compatible NVIDIA GPU plus a working CUDA PyTorch build already installed for ComfyUI. The default `requirements.txt` installs dependencies for the exposed LongCat Avatar nodes, including vocal extraction support, but intentionally does not install `torch`, `torchvision`, `torchaudio`, FlashAttention, xFormers, SageAttention, Streamlit, OpenAI SDK, or upstream demo/server-only packages, because replacing those packages can break an existing ComfyUI setup.
 
+System prerequisites:
+
+- FFmpeg executable: required by `LongCat Avatar Vocal Extract` through `audio-separator`, and by video/audio mux helpers. This must be an `ffmpeg` command visible on the PATH used to launch ComfyUI; Python packages such as `imageio-ffmpeg` do not satisfy every subprocess lookup.
+
+Install examples:
+
+```bash
+# Conda/Miniforge environment used to launch ComfyUI
+conda install -c conda-forge ffmpeg
+
+# macOS Homebrew
+brew install ffmpeg
+
+# Debian/Ubuntu
+sudo apt-get install ffmpeg
+```
+
+Verify from the same terminal or service environment that starts ComfyUI:
+
+```bash
+ffmpeg -version
+```
+
 macOS/MPS inference is not supported in this release. Any MPS work must happen on a dedicated experimental branch and must not be merged into the public CUDA path until Apple Silicon smoke inference proves model loading, attention fallback, audio encoding, VAE encode/decode, and end-to-end timing.
 
 Dependency groups:

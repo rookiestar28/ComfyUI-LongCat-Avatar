@@ -46,6 +46,19 @@ class DependencyContractTests(unittest.TestCase):
         self.assertIn("xformers", acceleration_text)
         self.assertIn("SageAttention", acceleration_text)
 
+    def test_ffmpeg_executable_requirement_is_documented_not_python_packaged(self):
+        default = requirement_names(ROOT / "requirements.txt")
+        self.assertIn("imageio-ffmpeg", default)
+        self.assertNotIn("ffmpeg", default)
+
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("FFmpeg executable", readme)
+        self.assertIn("conda install -c conda-forge ffmpeg", readme)
+        self.assertIn("brew install ffmpeg", readme)
+        self.assertIn("sudo apt-get install ffmpeg", readme)
+        self.assertIn("ffmpeg -version", readme)
+        self.assertIn("PATH used to launch ComfyUI", readme)
+
     def test_audio_separator_is_not_imported_at_module_import_time(self):
         for path in (
             ROOT / "LongCat_Video" / "run_demo_avatar_single_audio_to_video.py",
