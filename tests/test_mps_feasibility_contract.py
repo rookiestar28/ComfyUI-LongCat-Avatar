@@ -21,7 +21,9 @@ class MPSFeasibilityContractTests(unittest.TestCase):
         self.assertIn("CUDA-only", report.cuda_only_assumptions[0])
         self.assertNotIn("require_cuda_device", report.cuda_only_assumptions[0])
         self.assertGreaterEqual(len(report.initialization_blockers), 3)
-        self.assertIn("SDPA attention", report.initialization_blockers[1])
+        self.assertIn("prior giant attention score-buffer", report.initialization_blockers[1])
+        self.assertIn("MPS activation/TensorIterator", report.initialization_blockers[1])
+        self.assertNotIn("invalid large buffer allocation", report.initialization_blockers[1])
         self.assertIn("macos-mps branch", report.non_merge_condition)
         self.assertIn("Do not merge MPS inference into main", report.non_merge_condition)
 

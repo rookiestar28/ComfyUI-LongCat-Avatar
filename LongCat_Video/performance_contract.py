@@ -215,7 +215,8 @@ def build_mps_feasibility_report(
         ),
         initialization_blockers=(
             "Minimal single-avatar MPS segment still lacks a first output artifact.",
-            "Avatar DiT SDPA attention currently fails with an invalid large buffer allocation on the tested M2 host.",
+            "Avatar DiT now passes the prior giant attention score-buffer allocation but stalls during "
+            "denoising under MPS activation/TensorIterator memory pressure on the tested M2 host.",
             "End-to-end audio-driven frame timing, video decode memory behavior, and support wording remain unaccepted on MPS.",
         ),
         non_merge_condition=MPS_NON_MERGE_CONDITION,
