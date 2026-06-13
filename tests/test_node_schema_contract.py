@@ -58,6 +58,7 @@ class NodeSchemaContractTests(unittest.TestCase):
                 node_module.LongCat_Video_SM_Audio,
                 node_module.LongCat_Video_SM_AudioWindow,
                 node_module.LongCat_Video_SM_AudioCrop,
+                node_module.LongCat_Video_SM_MLXGenerate,
                 node_module.LongCat_Video_SM_Vocal,
                 node_module.LongCat_Video_SM_WhisperModel,
                 node_module.LongCat_Video_SM_VocalModel,
@@ -75,6 +76,7 @@ class NodeSchemaContractTests(unittest.TestCase):
                 "LongCat_Video_SM_Audio",
                 "LongCat_Video_SM_AudioWindow",
                 "LongCat_Video_SM_AudioCrop",
+                "LongCat_Video_SM_MLXGenerate",
                 "LongCat_Video_SM_Vocal",
                 "LongCat_Video_SM_WhisperModel",
                 "LongCat_Video_SM_VocalModel",
@@ -588,6 +590,89 @@ class NodeSchemaContractTests(unittest.TestCase):
             "LongCat_Video_SM_AudioCrop",
             [node_class.__name__ for node_class in node_list],
         )
+        self.assertIn(
+            "LongCat_Video_SM_MLXGenerate",
+            [node_class.__name__ for node_class in node_list],
+        )
+
+    def test_mlx_bridge_schema_is_external_runner_specific(self):
+        with loaded_longcat_node_module() as node_module:
+            schema = node_module.LongCat_Video_SM_MLXGenerate.define_schema()
+
+        self.assertEqual(schema.display_name, "LongCat Avatar MLX External Runner")
+        self.assertEqual(schema.category, "LongCat Avatar/MLX")
+        self.assertEqual(
+            [port.name for port in schema.inputs],
+            [
+                "image",
+                "audio",
+                "runner_python",
+                "weights_root",
+                "variant",
+                "mode",
+                "prompt",
+                "negative_prompt",
+                "height",
+                "width",
+                "num_frames",
+                "fps",
+                "seed",
+                "timeout_seconds",
+                "output_basename",
+                "retain_job_dir",
+            ],
+        )
+        self.assertEqual(port_by_name(schema, "variant").options, ["q4-merged", "q8-merged", "merged"])
+        self.assertEqual(port_by_name(schema, "mode").options, ["dry-run", "generate"])
+        self.assertNotIn("mps", schema.display_name.lower())
+        self.assertEqual(
+            [port.display_name for port in schema.outputs],
+            ["video_path", "frames_path", "response_path", "job_dir"],
+        )
+
+    def test_mlx_bridge_execute_delegates_to_bridge_helper(self):
+        with loaded_longcat_node_module() as node_module:
+            calls = []
+
+            def fake_bridge(**kwargs):
+                calls.append(kwargs)
+                return SimpleNamespace(
+                    video_path="video.mp4",
+                    frames_path="frames.npy",
+                    response_path="response.json",
+                    job_dir="job",
+                )
+
+            node_module.run_mlx_bridge_job = fake_bridge
+            result = node_module.LongCat_Video_SM_MLXGenerate.execute(
+                "image",
+                "audio",
+                "python",
+                "weights",
+                "q4-merged",
+                "dry-run",
+                "prompt",
+                "negative",
+                256,
+                432,
+                29,
+                30,
+                7,
+                60,
+                "jobname",
+                True,
+            )
+
+        self.assertEqual(result, ("video.mp4", "frames.npy", "response.json", "job"))
+        self.assertEqual(calls[0]["runner_python"], "python")
+        self.assertEqual(calls[0]["weights_root"], "weights")
+        self.assertEqual(calls[0]["variant"], "q4-merged")
+        self.assertEqual(calls[0]["mode"], "dry-run")
+        self.assertEqual(calls[0]["height"], 256)
+        self.assertEqual(calls[0]["width"], 432)
+        self.assertEqual(calls[0]["num_frames"], 29)
+        self.assertTrue(callable(calls[0]["image_writer"]))
+        self.assertTrue(callable(calls[0]["audio_writer"]))
 
     def test_whisper_and_vocal_model_schemas_use_expected_model_lists(self):
         with loaded_longcat_node_module() as node_module:

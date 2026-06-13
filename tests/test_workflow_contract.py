@@ -41,6 +41,7 @@ class WorkflowContractTests(unittest.TestCase):
         ):
             self.assertIn(node_type, workflow_nodes)
 
+        self.assertNotIn("LongCat_Video_SM_MLXGenerate", workflow_nodes)
         self.assertNotIn("AudioEncoderLoader", workflow_nodes)
 
     def test_model_workflow_uses_current_official_sharded_schema(self):

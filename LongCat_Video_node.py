@@ -33,6 +33,8 @@ from .LongCat_Video.performance_contract import (
     build_runtime_plan,
     cleanup_runtime_plan,
 )
+from .LongCat_Video.mlx_bridge import run_mlx_bridge_job
+from .LongCat_Video.mlx_runner_contract import SUPPORTED_MLX_FPS, SUPPORTED_MLX_VARIANTS
 from .LongCat_Video.sampler_contract import build_audio_window_payload, build_sampler_execution_request
 from .LongCat_Video.text_conditioning import (
     DEFAULT_OFFICIAL_TEXT_ENCODER_ROOT,
@@ -72,6 +74,21 @@ DEFAULT_OFFICIAL_CHECKPOINTS = {
     OFFICIAL_SHARDED: "LongCat-Video-Avatar-1.5/base_model/diffusion_pytorch_model.safetensors.index.json",
     OFFICIAL_INT8_SHARDED: "LongCat-Video-Avatar-1.5/base_model_int8/quantized_model.safetensors.index.json",
 }
+MLX_BRIDGE_MODES = ["dry-run", "generate"]
+
+
+def _write_mlx_image_input(image, path):
+    tensor2image(image).save(path)
+
+
+def _write_mlx_audio_input(audio, path):
+    import soundfile as sf
+
+    waveform = audio["waveform"].squeeze(0)
+    waveform_np = waveform.cpu().numpy() if hasattr(waveform, "cpu") else waveform.numpy()
+    if waveform_np.ndim == 2:
+        waveform_np = waveform_np.T
+    sf.write(path, waveform_np, audio["sample_rate"])
 
 
 def _resolve_single_file_model_name(inference_weight_mode):
@@ -473,6 +490,83 @@ class LongCat_Video_SM_AudioCrop(io.ComfyNode):
         cropped_audio = crop_audio_payload(audio, start_time=start_time, end_time=end_time)
         # IMPORTANT: keep preview generation on ComfyUI's native temp-audio path; downstream nodes receive AUDIO unchanged.
         return io.NodeOutput(cropped_audio, ui=ui.PreviewAudio(cropped_audio, cls=cls))
+
+
+class LongCat_Video_SM_MLXGenerate(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="LongCat_Video_SM_MLXGenerate",
+            display_name="LongCat Avatar MLX External Runner",
+            category="LongCat Avatar/MLX",
+            inputs=[
+                io.Image.Input("image"),
+                io.Audio.Input("audio"),
+                io.String.Input("runner_python", default="python", multiline=False),
+                io.String.Input("weights_root", default="", multiline=False),
+                io.Combo.Input("variant", options=list(SUPPORTED_MLX_VARIANTS)),
+                io.Combo.Input("mode", options=MLX_BRIDGE_MODES),
+                io.String.Input("prompt", default="", multiline=True),
+                io.String.Input("negative_prompt", default="", multiline=True),
+                io.Int.Input("height", default=256, min=64, max=2048, step=8),
+                io.Int.Input("width", default=432, min=64, max=2048, step=8),
+                io.Int.Input("num_frames", default=29, min=1, max=257, step=1),
+                io.Combo.Input("fps", options=list(SUPPORTED_MLX_FPS)),
+                io.Int.Input("seed", default=0, min=0, max=MAX_SEED, step=1),
+                io.Int.Input("timeout_seconds", default=600, min=1, max=86400, step=1),
+                io.String.Input("output_basename", default="longcat_mlx", multiline=False),
+                io.Boolean.Input("retain_job_dir", default=True),
+            ],
+            outputs=[
+                io.String.Output(display_name="video_path"),
+                io.String.Output(display_name="frames_path"),
+                io.String.Output(display_name="response_path"),
+                io.String.Output(display_name="job_dir"),
+            ],
+        )
+
+    @classmethod
+    def execute(
+        cls,
+        image,
+        audio,
+        runner_python="python",
+        weights_root="",
+        variant="q4-merged",
+        mode="dry-run",
+        prompt="",
+        negative_prompt="",
+        height=256,
+        width=432,
+        num_frames=29,
+        fps=30,
+        seed=0,
+        timeout_seconds=600,
+        output_basename="longcat_mlx",
+        retain_job_dir=True,
+    ) -> io.NodeOutput:
+        result = run_mlx_bridge_job(
+            runner_python=runner_python,
+            weights_root=weights_root,
+            variant=variant,
+            image=image,
+            audio=audio,
+            prompt=prompt,
+            negative_prompt=negative_prompt,
+            height=height,
+            width=width,
+            num_frames=num_frames,
+            fps=fps,
+            seed=seed,
+            output_root=folder_paths.get_output_directory(),
+            output_basename=output_basename,
+            mode=mode,
+            timeout_seconds=timeout_seconds,
+            retain_job_dir=bool(retain_job_dir),
+            image_writer=_write_mlx_image_input,
+            audio_writer=_write_mlx_audio_input,
+        )
+        return io.NodeOutput(result.video_path, result.frames_path, result.response_path, result.job_dir)
 
 class LongCat_Video_SM_Vocal(io.ComfyNode):
     @classmethod
