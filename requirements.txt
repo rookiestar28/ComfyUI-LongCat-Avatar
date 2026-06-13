@@ -15,3 +15,6 @@ librosa>=0.10.0
 pyloudnorm>=0.1.1
 imageio>=2.34.0
 imageio-ffmpeg>=0.5.1
+audio-separator>=0.30.2
+onnx>=1.18.0
+onnxruntime>=1.16.3

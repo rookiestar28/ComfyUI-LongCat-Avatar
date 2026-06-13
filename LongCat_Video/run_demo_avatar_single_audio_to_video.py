@@ -82,8 +82,8 @@ def _get_vocal_separator_class():
         from audio_separator.separator import Separator
     except ImportError as exc:
         raise ImportError(
-            "LongCat Avatar Vocal Extract requires optional vocal separation dependencies. "
-            "Install them with `pip install -r requirements-vocal.txt` in the ComfyUI Python environment."
+            "LongCat Avatar Vocal Extract requires vocal separation dependencies. "
+            "Install them with `pip install -r requirements.txt` in the ComfyUI Python environment."
         ) from exc
     return Separator
 

@@ -55,23 +55,16 @@ cd ComfyUI-LongCat-Avatar
 pip install -r requirements.txt
 ```
 
-Use the Python environment that launches ComfyUI. The runtime path is CUDA-oriented and expects a compatible NVIDIA GPU plus a working CUDA PyTorch build already installed for ComfyUI. The default `requirements.txt` intentionally does not install `torch`, `torchvision`, `torchaudio`, FlashAttention, xFormers, SageAttention, Streamlit, OpenAI SDK, or upstream demo/server-only packages, because replacing those packages can break an existing ComfyUI setup.
+Use the Python environment that launches ComfyUI. The runtime path is CUDA-oriented and expects a compatible NVIDIA GPU plus a working CUDA PyTorch build already installed for ComfyUI. The default `requirements.txt` installs dependencies for the exposed LongCat Avatar nodes, including vocal extraction support, but intentionally does not install `torch`, `torchvision`, `torchaudio`, FlashAttention, xFormers, SageAttention, Streamlit, OpenAI SDK, or upstream demo/server-only packages, because replacing those packages can break an existing ComfyUI setup.
 
 macOS/MPS inference is not supported in this release. Any MPS work must happen on a dedicated experimental branch and must not be merged into the public CUDA path until Apple Silicon smoke inference proves model loading, attention fallback, audio encoding, VAE encode/decode, and end-to-end timing.
 
-Optional dependency groups:
+Dependency groups:
 
 | File | Use When | Notes |
 | --- | --- | --- |
-| `requirements.txt` | Default node install | Required Python packages for normal model loading, audio encoding, and sampling. |
-| `requirements-vocal.txt` | You use `LongCat Avatar Vocal Extract` | Installs `audio-separator` and ONNX Runtime dependencies. The node imports these only when the vocal extraction path is used. |
+| `requirements.txt` | Default node install | Required Python packages for model loading, audio encoding, vocal extraction, and sampling. |
 | `requirements-acceleration.txt` | You want optional attention acceleration | Documentation-only examples for FlashAttention, xFormers, and SageAttention. Do not install blindly; choose versions manually that match your ComfyUI PyTorch/CUDA stack. |
-
-Example optional vocal install:
-
-```bash
-pip install -r requirements-vocal.txt
-```
 
 ## Model Files
 
@@ -128,15 +121,17 @@ Download sources:
 - Shared LongCat-Video tokenizer/text encoder: <https://huggingface.co/meituan-longcat/LongCat-Video>
 - Community INT8 merged DiT: <https://huggingface.co/smthem/LongCat-Video-Avatar-1.5-merge>
 - UMT5 text encoder: <https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/tree/main/split_files/text_encoders>
+- Optional vocal separator: <https://huggingface.co/seanghay/uvr_models/blob/main/Kim_Vocal_2.onnx>
 
 | Model file | Description | Download link | ComfyUI filename |
 | --- | --- | --- | --- |
 | Whisper-large-v3 | Avatar 1.5 audio encoder used by `LongCat Avatar Whisper` | [Hugging Face](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5/blob/main/whisper-large-v3/model.safetensors) | Download as `model.safetensors`, then rename to `whisper-large-v3.safetensors` under `ComfyUI/models/audio_encoders/`. |
 | Distill LoRA | Required Avatar 1.5 distillation LoRA for 8-step inference | [Hugging Face](https://huggingface.co/meituan-longcat/LongCat-Video-Avatar-1.5/blob/main/lora/dmd_lora.safetensors) | Keep as `dmd_lora.safetensors` or rename to `longcat-avatar-dmd_lora.safetensors` under `ComfyUI/models/loras/`. |
+| Kim_Vocal_2.onnx | Optional vocal separation model used by `LongCat Avatar Vocal Model` | [Hugging Face](https://huggingface.co/seanghay/uvr_models/blob/main/Kim_Vocal_2.onnx) | Keep as `Kim_Vocal_2.onnx` under `ComfyUI/models/longcat/`. |
 
 The VAE filename is selectable from the ComfyUI VAE dropdown; `LongCat-Video-Avatar-vae.safetensors` and `LongCat_Avatar_1.5_vae.safetensors` are both acceptable local filenames as long as the selected file is the Avatar 1.5 VAE.
 
-`Kim_Vocal_2.onnx` is only needed when using the optional vocal separation nodes. Install `requirements-vocal.txt` first if you use `LongCat Avatar Vocal Model` and `LongCat Avatar Vocal Extract`.
+`Kim_Vocal_2.onnx` is only needed when using the vocal separation nodes. The Python dependencies for those nodes are included in the default `requirements.txt` install.
 
 Automatic download coverage:
 

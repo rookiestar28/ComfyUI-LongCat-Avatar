@@ -35,10 +35,11 @@ class DependencyContractTests(unittest.TestCase):
 
         self.assertFalse(requirement_names(ROOT / "requirements.txt") & forbidden)
 
-    def test_optional_dependency_files_document_vocal_and_attention_paths(self):
-        vocal = requirement_names(ROOT / "requirements-vocal.txt")
-        self.assertIn("audio-separator", vocal)
-        self.assertIn("onnxruntime", vocal)
+    def test_default_requirements_include_exposed_node_runtime_dependencies(self):
+        default = requirement_names(ROOT / "requirements.txt")
+        self.assertIn("audio-separator", default)
+        self.assertIn("onnx", default)
+        self.assertIn("onnxruntime", default)
 
         acceleration_text = (ROOT / "requirements-acceleration.txt").read_text(encoding="utf-8")
         self.assertIn("flash-attn", acceleration_text)
@@ -61,7 +62,9 @@ class DependencyContractTests(unittest.TestCase):
         single_source = (ROOT / "LongCat_Video" / "run_demo_avatar_single_audio_to_video.py").read_text(
             encoding="utf-8"
         )
-        self.assertIn("requires optional vocal separation dependencies", single_source)
+        self.assertIn("requires vocal separation dependencies", single_source)
+        self.assertIn("requirements.txt", single_source)
+        self.assertNotIn("requirements-vocal.txt", single_source)
 
     def test_block_sparse_triton_import_is_optional_for_mps_node_startup(self):
         path = ROOT / "LongCat_Video" / "longcat_video" / "block_sparse_attention" / "bsa_interface.py"
