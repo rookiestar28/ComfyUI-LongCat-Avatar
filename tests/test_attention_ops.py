@@ -19,6 +19,7 @@ class AttentionOpsTests(unittest.TestCase):
         global mps_attention_chunk_size
         global mps_attention_debug_enabled
         global mps_attention_max_score_bytes
+        global mps_attention_strategy
         global mps_memory_safe_attention
         global select_query_chunk_size
         from LongCat_Video.longcat_video.modules.attention_ops import (
@@ -29,6 +30,7 @@ class AttentionOpsTests(unittest.TestCase):
             mps_attention_chunk_size,
             mps_attention_debug_enabled,
             mps_attention_max_score_bytes,
+            mps_attention_strategy,
             mps_memory_safe_attention,
             select_query_chunk_size,
         )
@@ -115,6 +117,19 @@ class AttentionOpsTests(unittest.TestCase):
         self.assertEqual(mps_attention_chunk_size(environ), 3)
         self.assertTrue(mps_attention_debug_enabled(environ))
         self.assertFalse(mps_attention_debug_enabled({"LONGCAT_MPS_ATTENTION_DEBUG": "0"}))
+
+    def test_mps_attention_strategy_allows_only_exact_query_chunking(self):
+        self.assertEqual(mps_attention_strategy({}), "query_chunk")
+        self.assertEqual(mps_attention_strategy({"LONGCAT_MPS_ATTENTION_STRATEGY": "auto"}), "query_chunk")
+        self.assertEqual(mps_attention_strategy({"LONGCAT_MPS_ATTENTION_STRATEGY": "query-chunk"}), "query_chunk")
+
+        for strategy in ("temporal_window", "sliding-window", "key_chunk", "kv_chunk"):
+            with self.subTest(strategy=strategy):
+                with self.assertRaisesRegex(NotImplementedError, "Only exact query_chunk"):
+                    mps_attention_strategy({"LONGCAT_MPS_ATTENTION_STRATEGY": strategy})
+
+        with self.assertRaisesRegex(ValueError, "Unsupported LONGCAT_MPS_ATTENTION_STRATEGY"):
+            mps_attention_strategy({"LONGCAT_MPS_ATTENTION_STRATEGY": "surprise"})
 
     def test_mps_memory_safe_attention_preserves_cpu_sdpa_behavior(self):
         generator = torch.Generator(device="cpu").manual_seed(17)

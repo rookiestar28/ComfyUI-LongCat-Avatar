@@ -242,6 +242,8 @@ class AttentionContractTests(unittest.TestCase):
         self.assertIn("LONGCAT_MPS_ATTENTION_MAX_SCORE_BYTES", source)
         self.assertIn("LONGCAT_MPS_ATTENTION_CHUNK_SIZE", source)
         self.assertIn("LONGCAT_MPS_ATTENTION_DEBUG", source)
+        self.assertIn("LONGCAT_MPS_ATTENTION_STRATEGY", source)
+        self.assertIn("def mps_attention_strategy", source)
         self.assertIn("def mps_memory_safe_attention", source)
 
 

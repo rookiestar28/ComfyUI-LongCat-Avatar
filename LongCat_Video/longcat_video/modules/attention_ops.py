@@ -12,7 +12,21 @@ import torch.nn.functional as F
 _WARNED_FALLBACKS = set()
 _SAFE_LABEL_RE = re.compile(r"[^A-Za-z0-9_.:-]+")
 DEFAULT_MPS_ATTENTION_MAX_SCORE_BYTES = 256 * 1024 * 1024
+MPS_ATTENTION_STRATEGY_QUERY_CHUNK = "query_chunk"
 _FALSE_ENV_VALUES = {"", "0", "false", "no", "off"}
+_MPS_ATTENTION_STRATEGY_ALIASES = {
+    "": MPS_ATTENTION_STRATEGY_QUERY_CHUNK,
+    "auto": MPS_ATTENTION_STRATEGY_QUERY_CHUNK,
+    MPS_ATTENTION_STRATEGY_QUERY_CHUNK: MPS_ATTENTION_STRATEGY_QUERY_CHUNK,
+}
+_UNSUPPORTED_MPS_ATTENTION_STRATEGIES = {
+    "key_chunk",
+    "kv_chunk",
+    "sliding_window",
+    "temporal",
+    "temporal_window",
+    "windowed",
+}
 
 
 _DTYPE_BYTE_SIZES = {
@@ -218,6 +232,23 @@ def mps_attention_debug_enabled(environ=None) -> bool:
     return str(value).strip().lower() not in _FALSE_ENV_VALUES
 
 
+def mps_attention_strategy(environ=None) -> str:
+    raw_value = (environ or os.environ).get("LONGCAT_MPS_ATTENTION_STRATEGY", "")
+    normalized = str(raw_value).strip().lower().replace("-", "_")
+    if normalized in _MPS_ATTENTION_STRATEGY_ALIASES:
+        return _MPS_ATTENTION_STRATEGY_ALIASES[normalized]
+    if normalized in _UNSUPPORTED_MPS_ATTENTION_STRATEGIES:
+        raise NotImplementedError(
+            f"LONGCAT_MPS_ATTENTION_STRATEGY={raw_value!r} is not supported. "
+            "Only exact query_chunk attention is enabled on the macos-mps branch; "
+            "temporal/windowed/key-chunk strategies require separate validation."
+        )
+    raise ValueError(
+        f"Unsupported LONGCAT_MPS_ATTENTION_STRATEGY={raw_value!r}. "
+        "Use 'query_chunk' or leave it unset."
+    )
+
+
 def _resolve_mps_chunk_size(q, k, chunk_size, max_score_bytes: int) -> tuple[int, int, int]:
     full_score_bytes = attention_score_buffer_bytes(q, k)
     if chunk_size is not None:
@@ -245,6 +276,7 @@ def mps_memory_safe_attention(
     if _device_type(q) != "mps":
         return sdpa_attention(q, k, v, attn_mask=attn_mask)
 
+    mps_attention_strategy(environ)
     budget = int(max_score_bytes) if max_score_bytes is not None else mps_attention_max_score_bytes(environ)
     env_chunk_size = chunk_size if chunk_size is not None else mps_attention_chunk_size(environ)
     full_score_bytes, selected_chunk, _ = _resolve_mps_chunk_size(q, k, env_chunk_size, budget)
