@@ -38,6 +38,7 @@ from .sampler_contract import (
     validate_continuation_parameters,
     validate_output_tensor_contract,
 )
+from .backend_dtype_policy import resolve_random_generator_device
 from .debug_profile import ensure_debug_profiler
 
 
@@ -281,7 +282,7 @@ def generate_multi(pipe,condition,te_cond,device,seed,cond_image,resolution,
     # global_seed = 42
     # seed = global_seed + global_rank
 
-    generator = torch.Generator(device=device)
+    generator = torch.Generator(device=resolve_random_generator_device(device))
     generator.manual_seed(seed)
 
     #if cp_rank == 0:

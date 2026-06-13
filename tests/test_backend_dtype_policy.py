@@ -8,6 +8,7 @@ from LongCat_Video.backend_dtype_policy import (
     PRECISION_FP32,
     mps_safe_numeric_dtype_name,
     randn_for_device,
+    resolve_random_generator_device,
     resolve_backend_dtype_policy,
 )
 
@@ -113,6 +114,12 @@ class BackendDTypePolicyTests(unittest.TestCase):
         self.assertEqual(mps_safe_numeric_dtype_name("mps", "torch.int64"), "int32")
         self.assertEqual(mps_safe_numeric_dtype_name("cuda:0", "torch.float64"), "float64")
 
+    def test_random_generator_device_uses_cpu_for_mps(self):
+        self.assertEqual(resolve_random_generator_device("mps"), "cpu")
+        self.assertEqual(resolve_random_generator_device("mps:0"), "cpu")
+        self.assertEqual(resolve_random_generator_device("cuda:0"), "cuda:0")
+        self.assertEqual(resolve_random_generator_device("cpu"), "cpu")
+
     def test_randn_for_mps_generates_on_cpu_then_moves_to_mps(self):
         fake_torch = FakeTorch()
 
@@ -150,6 +157,18 @@ class BackendDTypePolicyTests(unittest.TestCase):
 
         self.assertIn("randn_for_device", source)
         self.assertNotIn("latents = torch.randn(shape", source)
+
+    def test_avatar_generation_wrappers_use_backend_generator_device_helper(self):
+        for path in (
+            Path("LongCat_Video/run_demo_avatar_single_audio_to_video.py"),
+            Path("LongCat_Video/run_demo_avatar_multi_audio_to_video.py"),
+        ):
+            with self.subTest(path=str(path)):
+                source = path.read_text(encoding="utf-8")
+
+                self.assertIn("resolve_random_generator_device", source)
+                self.assertIn("torch.Generator(device=resolve_random_generator_device(device))", source)
+                self.assertNotIn("torch.Generator(device=device)", source)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,7 @@ from .audio_contract import (
     validate_matching_audio_embedding_shapes,
     validate_multi_audio_lengths,
 )
+from .backend_dtype_policy import resolve_random_generator_device
 from .sampler_contract import (
     expected_output_frames,
     normalize_seed,
@@ -448,7 +449,7 @@ def generate(pipe,condition,te_cond,device,seed,stage_1,cond_image,resolution,
     height, width = resolve_resolution_dimensions(resolution)
     seed = normalize_seed(seed)
     ref_img_index, mask_frame_range = validate_continuation_parameters(ref_img_index, mask_frame_range)
-    generator = torch.Generator(device=device)
+    generator = torch.Generator(device=resolve_random_generator_device(device))
     generator.manual_seed(seed)
 
 

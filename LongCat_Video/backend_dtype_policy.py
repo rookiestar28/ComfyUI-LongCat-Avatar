@@ -208,6 +208,12 @@ def mps_safe_numeric_dtype_name(device: Any, dtype_name: Any) -> str:
     return normalized
 
 
+def resolve_random_generator_device(device: Any) -> str:
+    if normalize_backend_type(device) == "mps":
+        return "cpu"
+    return str(device or "cpu").lower()
+
+
 def randn_for_device(
     shape: Any,
     *,
