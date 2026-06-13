@@ -9,6 +9,7 @@ from .checkpoint_contract import (
     build_text_encoder_download_manifest,
     download_missing_checkpoint_assets,
 )
+from .backend_capabilities import normalize_backend_type
 
 
 EXPECTED_TEXT_BATCH = 1
@@ -19,6 +20,7 @@ TEXT_CONDITIONING_SOURCE_CLIP = "comfy_clip_umt5"
 TEXT_CONDITIONING_SOURCE_OFFICIAL = "official_longcat_umt5"
 DEFAULT_OFFICIAL_TEXT_ENCODER_ROOT = "LongCat-Video"
 TEXT_ENCODER_OFFLOAD_DEVICES = ("cpu", "cuda")
+MPS_VISIBLE_TEXT_ENCODER_OFFLOAD_DEVICES = ("cpu",)
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,30 @@ def normalize_text_encoder_offload_device(offload_device: Any) -> str:
             + f"; got {offload_device!r}."
         )
     return normalized
+
+
+def resolve_text_encoder_execution_device(
+    offload_device: Any,
+    runtime_device: Any,
+    *,
+    torch_module: Any,
+) -> str:
+    requested = normalize_text_encoder_offload_device(offload_device)
+    if requested == "cpu":
+        return "cpu"
+
+    cuda_available = bool(
+        hasattr(torch_module, "cuda")
+        and callable(getattr(torch_module.cuda, "is_available", None))
+        and torch_module.cuda.is_available()
+    )
+    if normalize_backend_type(runtime_device) == "cuda" and cuda_available:
+        return "cuda"
+
+    # IMPORTANT: stale workflows may still carry offload_device=cuda. On MPS/CPU
+    # PyTorch builds, passing that value to torch.device("cuda") crashes before
+    # text encoding starts, so CPU is the safe UMT5 execution target.
+    return "cpu"
 
 
 def _safe_relative_model_path(value: str | None) -> str:
@@ -311,7 +337,13 @@ def encode_official_text_conditioning(
         ) from exc
 
     dtype = dtype or torch.bfloat16
-    text_encoder_device = torch.device(normalize_text_encoder_offload_device(offload_device))
+    text_encoder_device = torch.device(
+        resolve_text_encoder_execution_device(
+            offload_device,
+            device,
+            torch_module=torch,
+        )
+    )
     output_device = torch.device(device)
     tokenizer = AutoTokenizer.from_pretrained(layout.root, subfolder="tokenizer", torch_dtype=dtype)
     text_encoder = UMT5EncoderModel.from_pretrained(layout.root, subfolder="text_encoder", torch_dtype=dtype)

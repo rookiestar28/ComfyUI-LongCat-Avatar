@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from LongCat_Video.performance_contract import (
     MAX_STREAMING_PREFETCH_BLOCKS,
+    MPS_VISIBLE_VAE_OFFLOAD_DEVICES,
     VAE_OFFLOAD_DEVICES,
     apply_runtime_plan,
     build_runtime_plan,
@@ -65,6 +66,7 @@ class PerformanceContractTests(unittest.TestCase):
 
     def test_normalizes_vae_offload_device(self):
         self.assertEqual(VAE_OFFLOAD_DEVICES, ("cpu", "cuda"))
+        self.assertEqual(MPS_VISIBLE_VAE_OFFLOAD_DEVICES, ("cpu",))
         self.assertEqual(normalize_offload_device("cpu"), "cpu")
         self.assertEqual(normalize_offload_device("CUDA"), "cuda")
         with self.assertRaisesRegex(ValueError, "offload_device"):

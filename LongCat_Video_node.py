@@ -28,7 +28,7 @@ from .LongCat_Video.model_contract import (
     OFFICIAL_V15_DISTILL_TEXT_CFG,
 )
 from .LongCat_Video.performance_contract import (
-    VAE_OFFLOAD_DEVICES,
+    MPS_VISIBLE_VAE_OFFLOAD_DEVICES,
     apply_runtime_plan,
     build_runtime_plan,
     cleanup_runtime_plan,
@@ -36,15 +36,15 @@ from .LongCat_Video.performance_contract import (
 from .LongCat_Video.sampler_contract import build_audio_window_payload, build_sampler_execution_request
 from .LongCat_Video.text_conditioning import (
     DEFAULT_OFFICIAL_TEXT_ENCODER_ROOT,
+    MPS_VISIBLE_TEXT_ENCODER_OFFLOAD_DEVICES,
     TEXT_CONDITIONING_SOURCE_CLIP,
-    TEXT_ENCODER_OFFLOAD_DEVICES,
     encode_official_text_conditioning,
     extract_scheduled_text_embedding,
     resolve_or_download_official_text_encoder_layout,
     validate_text_conditioning_payload,
 )
 from .LongCat_Video.video_output import save_muxed_video, validate_mux_audio_path
-from .LongCat_Video.attention_contract import ATTENTION_MODES, validate_attention_mode_for_device
+from .LongCat_Video.attention_contract import MPS_VISIBLE_ATTENTION_MODES, validate_attention_mode_for_device
 from .LongCat_Video.checkpoint_contract import (
     OFFICIAL_INT8_SHARDED,
     OFFICIAL_SHARDED,
@@ -137,7 +137,7 @@ class LongCat_Video_SM_Model(io.ComfyNode):
             category="LongCat Avatar",
             inputs=[
                 io.Combo.Input("inference_weight_mode",options=INFERENCE_WEIGHT_MODES),
-                io.Combo.Input("attention_mode",options=ATTENTION_MODES),
+                io.Combo.Input("attention_mode",options=MPS_VISIBLE_ATTENTION_MODES),
                 io.Boolean.Input("auto_download_missing_weights", default=True),
                 io.Combo.Input("vae",options= ["none"] + folder_paths.get_filename_list("vae")),
                 io.Combo.Input("lora",options= ["none"] + folder_paths.get_filename_list("loras")),
@@ -207,7 +207,7 @@ class LongCat_Video_SM_Sampler(io.ComfyNode):
                 io.Int.Input("mask_frame_range", default=3, min=0, max=1024, step=1),
                 io.Int.Input("block_num", default=1, min=0, max=64,step=1),
                 io.String.Input("mux_audio_path", default="", multiline=False),
-                io.Combo.Input("offload_device", options=list(VAE_OFFLOAD_DEVICES), default="cpu"),
+                io.Combo.Input("offload_device", options=list(MPS_VISIBLE_VAE_OFFLOAD_DEVICES), default="cpu"),
                 io.Boolean.Input("debug_mode", default=False),
             ],
             outputs=[
@@ -294,7 +294,7 @@ class LongCat_Video_SM_Encode(io.ComfyNode):
                 io.Clip.Input("clip", optional=True),
                 io.String.Input("text_encoder_root", default=DEFAULT_OFFICIAL_TEXT_ENCODER_ROOT, multiline=False),
                 io.Boolean.Input("auto_download_missing_text_encoder", default=True),
-                io.Combo.Input("offload_device", options=list(TEXT_ENCODER_OFFLOAD_DEVICES), default="cpu"),
+                io.Combo.Input("offload_device", options=list(MPS_VISIBLE_TEXT_ENCODER_OFFLOAD_DEVICES), default="cpu"),
                 io.String.Input("prompt",default="A western man stands on stage under dramatic lighting, holding a microphone close to their mouth. Wearing a vibrant red jacket with gold embroidery, the singer is speaking while smoke swirls around them, creating a dynamic and atmospheric scene.",multiline=True),
                 io.String.Input("negative_prompt",default="Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards.",multiline=True),
             ],

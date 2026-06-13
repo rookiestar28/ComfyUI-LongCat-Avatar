@@ -7,10 +7,12 @@ from LongCat_Video.text_conditioning import (
     DEFAULT_OFFICIAL_TEXT_ENCODER_ROOT,
     EXPECTED_TEXT_HIDDEN_SIZE,
     MAX_TEXT_SEQUENCE_LENGTH,
+    MPS_VISIBLE_TEXT_ENCODER_OFFLOAD_DEVICES,
     TEXT_CONDITIONING_SOURCE_CLIP,
     TEXT_CONDITIONING_SOURCE_OFFICIAL,
-    normalize_text_encoder_offload_device,
     extract_scheduled_text_embedding,
+    normalize_text_encoder_offload_device,
+    resolve_text_encoder_execution_device,
     resolve_or_download_official_text_encoder_layout,
     resolve_official_text_encoder_layout,
     validate_final_text_embedding,
@@ -39,6 +41,19 @@ class FakeFinite:
 
     def item(self):
         return self.finite
+
+
+class FakeCuda:
+    def __init__(self, available):
+        self.available = available
+
+    def is_available(self):
+        return self.available
+
+
+class FakeTorch:
+    def __init__(self, *, cuda_available):
+        self.cuda = FakeCuda(cuda_available)
 
 
 def _valid_rank3(seq_len=MAX_TEXT_SEQUENCE_LENGTH):
@@ -177,10 +192,51 @@ class TextConditioningTests(unittest.TestCase):
         )
 
     def test_normalizes_text_encoder_offload_device(self):
+        self.assertEqual(MPS_VISIBLE_TEXT_ENCODER_OFFLOAD_DEVICES, ("cpu",))
         self.assertEqual(normalize_text_encoder_offload_device("cpu"), "cpu")
         self.assertEqual(normalize_text_encoder_offload_device("CUDA"), "cuda")
         with self.assertRaisesRegex(ValueError, "offload_device"):
             normalize_text_encoder_offload_device("mps")
+
+    def test_resolves_stale_cuda_text_encoder_offload_to_cpu_on_mps(self):
+        self.assertEqual(
+            resolve_text_encoder_execution_device(
+                "cuda",
+                "mps",
+                torch_module=FakeTorch(cuda_available=False),
+            ),
+            "cpu",
+        )
+
+    def test_resolves_cuda_text_encoder_offload_to_cpu_when_cuda_unavailable(self):
+        self.assertEqual(
+            resolve_text_encoder_execution_device(
+                "cuda",
+                "cuda:0",
+                torch_module=FakeTorch(cuda_available=False),
+            ),
+            "cpu",
+        )
+
+    def test_resolves_cuda_text_encoder_offload_to_cuda_when_available(self):
+        self.assertEqual(
+            resolve_text_encoder_execution_device(
+                "CUDA",
+                "cuda:0",
+                torch_module=FakeTorch(cuda_available=True),
+            ),
+            "cuda",
+        )
+
+    def test_resolves_cpu_text_encoder_offload_to_cpu(self):
+        self.assertEqual(
+            resolve_text_encoder_execution_device(
+                "cpu",
+                "mps",
+                torch_module=FakeTorch(cuda_available=True),
+            ),
+            "cpu",
+        )
 
     def test_official_text_encoder_layout_auto_downloads_default_root(self):
         with tempfile.TemporaryDirectory() as root:

@@ -48,9 +48,8 @@ class WorkflowContractTests(unittest.TestCase):
 
         self.assertEqual(model_node["widgets_values"], [
             "official_sharded",
-            "official_sharded",
-            "sageattn",
-            "LongCat-Video-Avatar-vae.safetensors",
+            "sdpa",
+            True,
             "LongCat-Video-Avatar-vae.safetensors",
             "longcat-avatar-dmd_lora.safetensors",
         ])
@@ -59,10 +58,15 @@ class WorkflowContractTests(unittest.TestCase):
         sampler_node = nodes_by_type(load_workflow())["LongCat_Video_SM_Sampler"]
 
         self.assertEqual(sampler_node["widgets_values"][0], "ai2v")
-        self.assertEqual(sampler_node["widgets_values"][10:], ["", "cuda", False])
+        self.assertEqual(sampler_node["widgets_values"][10:], ["", "cpu", False])
         self.assertEqual(sampler_node["outputs"][0]["name"], "image")
         self.assertEqual(sampler_node["outputs"][1]["name"], "video_path")
         self.assertEqual(sampler_node["outputs"][1]["type"], "STRING")
+
+    def test_text_encode_workflow_uses_current_mps_schema_defaults(self):
+        text_node = nodes_by_type(load_workflow())["LongCat_Video_SM_Encode"]
+
+        self.assertEqual(text_node["widgets_values"][:3], ["LongCat-Video", True, "cpu"])
 
     def test_node_source_marks_gguf_as_unsupported(self):
         source = NODE_SOURCE_PATH.read_text(encoding="utf-8")
@@ -125,6 +129,12 @@ class WorkflowContractTests(unittest.TestCase):
 
         text = WORKFLOW_PATH.read_text(encoding="utf-8")
         for token in forbidden:
+            self.assertNotIn(token, text)
+
+    def test_mps_workflow_does_not_store_cuda_or_unsupported_attention_widgets(self):
+        text = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+        for token in ('"cuda"', '"flash_attn_2"', '"flash_attn_3"', '"xformers"', '"sageattn"', '"sageattn_3"'):
             self.assertNotIn(token, text)
 
 

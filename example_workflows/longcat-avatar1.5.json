@@ -33,9 +33,8 @@
       },
       "widgets_values": [
         "official_sharded",
-        "official_sharded",
-        "sageattn",
-        "LongCat-Video-Avatar-vae.safetensors",
+        "sdpa",
+        true,
         "LongCat-Video-Avatar-vae.safetensors",
         "longcat-avatar-dmd_lora.safetensors"
       ]
@@ -105,7 +104,7 @@
         5,
         0,
         "",
-        "cuda",
+        "cpu",
         false
       ]
     },
@@ -222,9 +221,9 @@
         "Node name for S&R": "LongCat_Video_SM_Encode"
       },
       "widgets_values": [
-        "",
-        "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards.",
-        "cuda",
+        "LongCat-Video",
+        true,
+        "cpu",
         "A blonde young woman sat on the grass singing, golden sunlight bathing her, a gentle breeze ruffling her hair, she completely absorbed in the music, her expression one of pure bliss. Her body and hands move gently to the rhythm of the music. best quality.",
         "Close-up, Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards."
       ]

@@ -107,15 +107,7 @@ class NodeSchemaContractTests(unittest.TestCase):
         )
         self.assertEqual(
             list(port_by_name(schema, "attention_mode").options),
-            [
-                "auto",
-                "sdpa",
-                "flash_attn_2",
-                "flash_attn_3",
-                "xformers",
-                "sageattn",
-                "sageattn_3",
-            ],
+            ["sdpa"],
         )
         self.assertEqual(port_by_name(schema, "auto_download_missing_weights").port_type, "BOOLEAN")
         self.assertIs(port_by_name(schema, "auto_download_missing_weights").default, True)
@@ -143,7 +135,7 @@ class NodeSchemaContractTests(unittest.TestCase):
         self.assertEqual(port_by_name(schema, "text_encoder_root").default, "LongCat-Video")
         self.assertEqual(port_by_name(schema, "auto_download_missing_text_encoder").port_type, "BOOLEAN")
         self.assertIs(port_by_name(schema, "auto_download_missing_text_encoder").default, True)
-        self.assertEqual(port_by_name(schema, "offload_device").options, ["cpu", "cuda"])
+        self.assertEqual(port_by_name(schema, "offload_device").options, ["cpu"])
         self.assertEqual(port_by_name(schema, "offload_device").default, "cpu")
 
     def test_text_encode_execute_uses_official_path_when_clip_is_missing(self):
@@ -292,7 +284,7 @@ class NodeSchemaContractTests(unittest.TestCase):
         self.assertEqual(port_by_name(schema, "block_num").min, 0)
         self.assertEqual(port_by_name(schema, "block_num").max, 64)
         self.assertEqual(port_by_name(schema, "mux_audio_path").default, "")
-        self.assertEqual(port_by_name(schema, "offload_device").options, ["cpu", "cuda"])
+        self.assertEqual(port_by_name(schema, "offload_device").options, ["cpu"])
         self.assertEqual(port_by_name(schema, "offload_device").default, "cpu")
         self.assertEqual(port_by_name(schema, "debug_mode").default, False)
         self.assertNotIn("save_video", {port.name for port in schema.inputs})

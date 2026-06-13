@@ -12,6 +12,7 @@ from LongCat_Video.attention_contract import (
     ATTENTION_MODE_XFORMERS,
     ATTENTION_MODES,
     MPS_SAFE_ATTENTION_MODES,
+    MPS_VISIBLE_ATTENTION_MODES,
     attention_config_fallback_warnings,
     attention_diagnostic_lines,
     apply_attention_mode_to_config,
@@ -166,6 +167,7 @@ class AttentionContractTests(unittest.TestCase):
 
     def test_mps_allows_only_explicit_sdpa_attention(self):
         self.assertEqual(MPS_SAFE_ATTENTION_MODES, (ATTENTION_MODE_SDPA,))
+        self.assertEqual(MPS_VISIBLE_ATTENTION_MODES, (ATTENTION_MODE_SDPA,))
         self.assertTrue(validate_attention_mode_for_device(ATTENTION_MODE_SDPA, "mps").available)
 
         for mode in (
