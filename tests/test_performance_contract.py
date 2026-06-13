@@ -315,13 +315,18 @@ class PerformanceContractTests(unittest.TestCase):
     def test_attention_modules_guard_flash_attention_with_sdpa_fallback(self):
         helper_source = Path("LongCat_Video/longcat_video/modules/attention_ops.py").read_text(encoding="utf-8")
         self.assertIn("scaled_dot_product_attention", helper_source)
+        self.assertIn("def mps_memory_safe_attention", helper_source)
 
         for path in ATTENTION_SOURCE_PATHS:
             with self.subTest(path=str(path)):
                 source = path.read_text(encoding="utf-8")
 
                 self.assertIn("_callable_or_none", source)
-                self.assertIn("_sdpa_attention", source)
+                if "modules/avatar/attention.py" in str(path).replace("\\", "/"):
+                    self.assertIn("_mps_memory_safe_attention", source)
+                    self.assertNotIn("_sdpa_attention", source)
+                else:
+                    self.assertIn("_sdpa_attention", source)
                 self.assertIn("callable(flash_attn_func)", source)
                 self.assertNotIn("x = flash_attn_func(\n                q,", source)
 
@@ -340,7 +345,10 @@ class PerformanceContractTests(unittest.TestCase):
                 self.assertIn("enable_sageattn", source)
                 self.assertIn("enable_sageattn3", source)
                 self.assertIn("sage_attention", source)
-                self.assertIn("_sdpa_attention", source)
+                if "modules/avatar/attention.py" in str(path).replace("\\", "/"):
+                    self.assertIn("_mps_memory_safe_attention", source)
+                else:
+                    self.assertIn("_sdpa_attention", source)
                 self.assertIn("warn_attention_fallback", source)
 
 

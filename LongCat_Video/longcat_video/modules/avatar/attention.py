@@ -9,9 +9,9 @@ from .rope_3d import RotaryPositionalEmbedding
 from ..blocks import RMSNorm_FP32
 from ..attention_ops import (
     callable_or_none as _callable_or_none,
+    mps_memory_safe_attention as _mps_memory_safe_attention,
     sage_attention,
     sage_attention_3,
-    sdpa_attention as _sdpa_attention,
     warn_attention_fallback,
 )
 from ...block_sparse_attention.bsa_interface import flash_attn_bsa_3d
@@ -91,12 +91,12 @@ class Attention(nn.Module):
             # IMPORTANT: optional SageAttention kernels must stay lazy; many ComfyUI installs lack the wheel.
             x = sage_attention_3(q, k, v)
             if x is None:
-                x = _sdpa_attention(q, k, v)
+                x = _mps_memory_safe_attention(q, k, v, label="avatar:self")
         elif self.enable_sageattn:
             # IMPORTANT: optional SageAttention kernels must stay lazy; many ComfyUI installs lack the wheel.
             x = sage_attention(q, k, v)
             if x is None:
-                x = _sdpa_attention(q, k, v)
+                x = _mps_memory_safe_attention(q, k, v, label="avatar:self")
         elif self.enable_flashattn3:
             flash_attn_func = _callable_or_none("flash_attn_interface", "flash_attn_func")
             if callable(flash_attn_func):
@@ -113,7 +113,7 @@ class Attention(nn.Module):
             else:
                 # Some ComfyUI Windows environments cannot load FlashAttention kernels.
                 warn_attention_fallback("flash_attn_3", "missing flash_attn_interface.flash_attn_func")
-                x = _sdpa_attention(q, k, v)
+                x = _mps_memory_safe_attention(q, k, v, label="avatar:self")
         elif self.enable_flashattn2:
             flash_attn_func = _callable_or_none("flash_attn", "flash_attn_func")
             if callable(flash_attn_func):
@@ -131,7 +131,7 @@ class Attention(nn.Module):
             else:
                 # Keep official flash-attn configs runnable when the optional wheel is unavailable.
                 warn_attention_fallback("flash_attn_2", "missing flash_attn.flash_attn_func")
-                x = _sdpa_attention(q, k, v)
+                x = _mps_memory_safe_attention(q, k, v, label="avatar:self")
         elif self.enable_xformers:
             memory_efficient_attention = _callable_or_none("xformers.ops", "memory_efficient_attention")
             if callable(memory_efficient_attention):
@@ -143,9 +143,9 @@ class Attention(nn.Module):
                 x = rearrange(x, "B M H K -> B H M K")
             else:
                 warn_attention_fallback("xformers", "missing xformers.ops.memory_efficient_attention")
-                x = _sdpa_attention(q, k, v)
+                x = _mps_memory_safe_attention(q, k, v, label="avatar:self")
         else:
-            x = _sdpa_attention(q, k, v)
+            x = _mps_memory_safe_attention(q, k, v, label="avatar:self")
 
         return x
 
@@ -435,11 +435,11 @@ class SingleStreamAttention(nn.Module):
         if self.enable_sageattn3:
             x = sage_attention_3(q, encoder_k, encoder_v)
             if x is None:
-                x = _sdpa_attention(q, encoder_k, encoder_v)
+                x = _mps_memory_safe_attention(q, encoder_k, encoder_v, label="avatar:cross")
         elif self.enable_sageattn:
             x = sage_attention(q, encoder_k, encoder_v)
             if x is None:
-                x = _sdpa_attention(q, encoder_k, encoder_v)
+                x = _mps_memory_safe_attention(q, encoder_k, encoder_v, label="avatar:cross")
         elif self.enable_flashattn3:
             flash_attn_func = _callable_or_none("flash_attn_interface", "flash_attn_func")
             if callable(flash_attn_func):
@@ -455,7 +455,7 @@ class SingleStreamAttention(nn.Module):
                 x = rearrange(x, "B S H D -> B H S D")
             else:
                 warn_attention_fallback("flash_attn_3", "missing flash_attn_interface.flash_attn_func")
-                x = _sdpa_attention(q, encoder_k, encoder_v)
+                x = _mps_memory_safe_attention(q, encoder_k, encoder_v, label="avatar:cross")
         elif self.enable_flashattn2:
             flash_attn_func = _callable_or_none("flash_attn", "flash_attn_func")
             if callable(flash_attn_func):
@@ -472,7 +472,7 @@ class SingleStreamAttention(nn.Module):
                 x = rearrange(x, "B S H D -> B H S D")
             else:
                 warn_attention_fallback("flash_attn_2", "missing flash_attn.flash_attn_func")
-                x = _sdpa_attention(q, encoder_k, encoder_v)
+                x = _mps_memory_safe_attention(q, encoder_k, encoder_v, label="avatar:cross")
         elif self.enable_xformers:
             memory_efficient_attention = _callable_or_none("xformers.ops", "memory_efficient_attention")
             if callable(memory_efficient_attention):
@@ -483,9 +483,9 @@ class SingleStreamAttention(nn.Module):
                 x = rearrange(x, "B M H K -> B H M K")
             else:
                 warn_attention_fallback("xformers", "missing xformers.ops.memory_efficient_attention")
-                x = _sdpa_attention(q, encoder_k, encoder_v)
+                x = _mps_memory_safe_attention(q, encoder_k, encoder_v, label="avatar:cross")
         else:
-            x = _sdpa_attention(q, encoder_k, encoder_v)
+            x = _mps_memory_safe_attention(q, encoder_k, encoder_v, label="avatar:cross")
 
         # linear transform
         x_output_shape = (B, N, C)

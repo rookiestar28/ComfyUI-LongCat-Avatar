@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import math
+import os
 import re
 from typing import Any
 
@@ -10,6 +11,8 @@ import torch.nn.functional as F
 
 _WARNED_FALLBACKS = set()
 _SAFE_LABEL_RE = re.compile(r"[^A-Za-z0-9_.:-]+")
+DEFAULT_MPS_ATTENTION_MAX_SCORE_BYTES = 256 * 1024 * 1024
+_FALSE_ENV_VALUES = {"", "0", "false", "no", "off"}
 
 
 _DTYPE_BYTE_SIZES = {
@@ -181,6 +184,95 @@ def _mps_memory_summary(torch_module) -> dict[str, int | None]:
         except Exception:
             result[field] = None
     return result
+
+
+def _env_int(environ, name: str, default: int | None = None) -> int | None:
+    raw_value = (environ or os.environ).get(name)
+    if raw_value is None or str(raw_value).strip() == "":
+        return default
+    try:
+        value = int(str(raw_value).strip())
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer byte or token value; got {raw_value!r}.") from exc
+    if value < 1:
+        raise ValueError(f"{name} must be positive; got {value!r}.")
+    return value
+
+
+def mps_attention_max_score_bytes(environ=None) -> int:
+    return int(
+        _env_int(
+            environ,
+            "LONGCAT_MPS_ATTENTION_MAX_SCORE_BYTES",
+            DEFAULT_MPS_ATTENTION_MAX_SCORE_BYTES,
+        )
+    )
+
+
+def mps_attention_chunk_size(environ=None) -> int | None:
+    return _env_int(environ, "LONGCAT_MPS_ATTENTION_CHUNK_SIZE", None)
+
+
+def mps_attention_debug_enabled(environ=None) -> bool:
+    value = (environ or os.environ).get("LONGCAT_MPS_ATTENTION_DEBUG", "")
+    return str(value).strip().lower() not in _FALSE_ENV_VALUES
+
+
+def _resolve_mps_chunk_size(q, k, chunk_size, max_score_bytes: int) -> tuple[int, int, int]:
+    full_score_bytes = attention_score_buffer_bytes(q, k)
+    if chunk_size is not None:
+        selected_chunk = min(int(chunk_size), int(q.shape[-2]))
+    elif full_score_bytes > int(max_score_bytes):
+        selected_chunk = select_query_chunk_size(q, k, int(max_score_bytes))
+    else:
+        selected_chunk = int(q.shape[-2])
+    chunk_score_bytes = attention_score_buffer_bytes(q, k, chunk_size=max(1, selected_chunk)) if selected_chunk else 0
+    return full_score_bytes, selected_chunk, chunk_score_bytes
+
+
+def mps_memory_safe_attention(
+    q,
+    k,
+    v,
+    attn_mask=None,
+    *,
+    label=None,
+    max_score_bytes=None,
+    chunk_size=None,
+    debug=None,
+    environ=None,
+):
+    if _device_type(q) != "mps":
+        return sdpa_attention(q, k, v, attn_mask=attn_mask)
+
+    budget = int(max_score_bytes) if max_score_bytes is not None else mps_attention_max_score_bytes(environ)
+    env_chunk_size = chunk_size if chunk_size is not None else mps_attention_chunk_size(environ)
+    full_score_bytes, selected_chunk, _ = _resolve_mps_chunk_size(q, k, env_chunk_size, budget)
+    should_chunk = env_chunk_size is not None or full_score_bytes > budget
+    debug_enabled = mps_attention_debug_enabled(environ) if debug is None else bool(debug)
+
+    if debug_enabled:
+        print(
+            format_attention_telemetry(
+                attention_telemetry_summary(
+                    label or "mps_attention",
+                    q,
+                    k,
+                    v,
+                    chunk_size=selected_chunk,
+                    max_score_bytes=budget,
+                )
+            )
+        )
+
+    if not should_chunk:
+        return sdpa_attention(q, k, v, attn_mask=attn_mask)
+    if attn_mask is not None:
+        raise RuntimeError(
+            "MPS chunked attention currently supports only unmasked attention; "
+            "refusing unsafe masked SDPA allocation."
+        )
+    return chunked_eager_attention(q, k, v, chunk_size=selected_chunk)
 
 
 def attention_telemetry_summary(

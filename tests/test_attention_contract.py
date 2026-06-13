@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import LongCat_Video.attention_contract as attention_contract
@@ -26,6 +27,8 @@ from LongCat_Video.mps_attention_probe import (
     build_representative_attention_probe_spec,
     run_mps_attention_equivalence_probe,
 )
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class AttentionContractTests(unittest.TestCase):
@@ -220,6 +223,26 @@ class AttentionContractTests(unittest.TestCase):
         )
         self.assertEqual(unavailable_result.status, "skipped")
         self.assertIn("MPS backend is not available", unavailable_result.reason)
+
+    def test_avatar_attention_sdpa_paths_route_through_mps_memory_safe_helper(self):
+        source = (ROOT / "LongCat_Video" / "longcat_video" / "modules" / "avatar" / "attention.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("mps_memory_safe_attention as _mps_memory_safe_attention", source)
+        self.assertNotIn("_sdpa_attention", source)
+        self.assertIn('_mps_memory_safe_attention(q, k, v, label="avatar:self")', source)
+        self.assertIn('_mps_memory_safe_attention(q, encoder_k, encoder_v, label="avatar:cross")', source)
+
+    def test_attention_ops_expose_mps_chunk_budget_controls(self):
+        source = (ROOT / "LongCat_Video" / "longcat_video" / "modules" / "attention_ops.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("LONGCAT_MPS_ATTENTION_MAX_SCORE_BYTES", source)
+        self.assertIn("LONGCAT_MPS_ATTENTION_CHUNK_SIZE", source)
+        self.assertIn("LONGCAT_MPS_ATTENTION_DEBUG", source)
+        self.assertIn("def mps_memory_safe_attention", source)
 
 
 if __name__ == "__main__":

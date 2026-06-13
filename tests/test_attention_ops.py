@@ -16,12 +16,20 @@ class AttentionOpsTests(unittest.TestCase):
         global attention_telemetry_summary
         global chunked_eager_attention
         global format_attention_telemetry
+        global mps_attention_chunk_size
+        global mps_attention_debug_enabled
+        global mps_attention_max_score_bytes
+        global mps_memory_safe_attention
         global select_query_chunk_size
         from LongCat_Video.longcat_video.modules.attention_ops import (
             attention_score_buffer_bytes,
             attention_telemetry_summary,
             chunked_eager_attention,
             format_attention_telemetry,
+            mps_attention_chunk_size,
+            mps_attention_debug_enabled,
+            mps_attention_max_score_bytes,
+            mps_memory_safe_attention,
             select_query_chunk_size,
         )
 
@@ -95,6 +103,51 @@ class AttentionOpsTests(unittest.TestCase):
         self.assertIn("q_shape=(1, 1, 2, 2)", line)
         self.assertNotIn("3.14159", line)
         self.assertNotIn("2.71828", line)
+
+    def test_mps_attention_env_helpers_parse_budget_chunk_and_debug(self):
+        environ = {
+            "LONGCAT_MPS_ATTENTION_MAX_SCORE_BYTES": "1024",
+            "LONGCAT_MPS_ATTENTION_CHUNK_SIZE": "3",
+            "LONGCAT_MPS_ATTENTION_DEBUG": "yes",
+        }
+
+        self.assertEqual(mps_attention_max_score_bytes(environ), 1024)
+        self.assertEqual(mps_attention_chunk_size(environ), 3)
+        self.assertTrue(mps_attention_debug_enabled(environ))
+        self.assertFalse(mps_attention_debug_enabled({"LONGCAT_MPS_ATTENTION_DEBUG": "0"}))
+
+    def test_mps_memory_safe_attention_preserves_cpu_sdpa_behavior(self):
+        generator = torch.Generator(device="cpu").manual_seed(17)
+        q = torch.randn((1, 2, 4, 3), generator=generator, dtype=torch.float32)
+        k = torch.randn((1, 2, 5, 3), generator=generator, dtype=torch.float32)
+        v = torch.randn((1, 2, 5, 3), generator=generator, dtype=torch.float32)
+
+        expected = F.scaled_dot_product_attention(q, k, v, dropout_p=0.0)
+        actual = mps_memory_safe_attention(q, k, v, max_score_bytes=1, debug=False)
+
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-6, rtol=1e-6))
+
+    def test_mps_memory_safe_attention_chunks_native_mps_when_budget_is_small(self):
+        mps_backend = getattr(getattr(torch, "backends", None), "mps", None)
+        is_available = getattr(mps_backend, "is_available", None)
+        if not callable(is_available) or not is_available():
+            self.skipTest("MPS backend is not available.")
+
+        generator = torch.Generator(device="cpu").manual_seed(23)
+        q_cpu = torch.randn((1, 2, 4, 3), generator=generator, dtype=torch.float32)
+        k_cpu = torch.randn((1, 2, 5, 3), generator=generator, dtype=torch.float32)
+        v_cpu = torch.randn((1, 2, 5, 3), generator=generator, dtype=torch.float32)
+        expected = F.scaled_dot_product_attention(q_cpu, k_cpu, v_cpu, dropout_p=0.0)
+
+        actual = mps_memory_safe_attention(
+            q_cpu.to("mps"),
+            k_cpu.to("mps"),
+            v_cpu.to("mps"),
+            max_score_bytes=1,
+            debug=False,
+        ).to("cpu")
+
+        self.assertTrue(torch.allclose(actual, expected, atol=1e-4, rtol=1e-4))
 
 
 if __name__ == "__main__":
