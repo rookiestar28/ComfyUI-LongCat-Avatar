@@ -118,7 +118,11 @@ def load_longcat_video_model(model_path,vae_path,distill_checkpoint_path="", nod
                              use_int8=False,model_type=AVATAR_V15,
                              checkpoint_source="single_file_safetensors",
                              official_checkpoint_path=None,
-                             attention_mode="auto",):
+                             attention_mode="auto",
+                             tokenizer_dtype=None,
+                             vae_dtype=None,
+                             scheduler_dtype=None,
+                             dit_dtype=None,):
 
     contract = resolve_avatar_model_contract(
         model_path,
@@ -134,22 +138,31 @@ def load_longcat_video_model(model_path,vae_path,distill_checkpoint_path="", nod
     attention_mode = normalize_attention_mode(attention_mode)
     validate_attention_mode_availability(attention_mode)
     attention_overrides = attention_mode_config_overrides(attention_mode)
+    tokenizer_dtype = tokenizer_dtype or torch.bfloat16
+    vae_dtype = vae_dtype or torch.bfloat16
+    scheduler_dtype = scheduler_dtype or torch.bfloat16
+    dit_dtype = dit_dtype or torch.bfloat16
 
     # initialize models
-    tokenizer = AutoTokenizer.from_pretrained(contract.metadata_root, subfolder=contract.tokenizer_subfolder, torch_dtype=torch.bfloat16)
+    tokenizer = AutoTokenizer.from_pretrained(contract.metadata_root, subfolder=contract.tokenizer_subfolder, torch_dtype=tokenizer_dtype)
 
     vae_config=AutoencoderKLWan.load_config(contract.vae_config_path)
-    vae=AutoencoderKLWan.from_config(vae_config, torch_dtype=torch.bfloat16)
+    vae=AutoencoderKLWan.from_config(vae_config, torch_dtype=vae_dtype)
     vae_sd=safe_load(contract.vae_path, device="cpu")
     vae_result = vae.load_state_dict(vae_sd, strict=False)
     validate_state_dict_result("VAE", vae_result)
-    vae=vae.eval().to(torch.bfloat16)
+    vae=vae.eval().to(vae_dtype)
     del vae_sd
     #vae = AutoencoderKLWan.from_single_file(vae_path,config=os.path.join(node_longcat_path, 'LongCat_Video/LongCat-Video/vae/config.json'), torch_dtype=torch.bfloat16)
-    scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(contract.metadata_root, subfolder=contract.scheduler_subfolder, torch_dtype=torch.bfloat16)
+    scheduler = FlowMatchEulerDiscreteScheduler.from_pretrained(contract.metadata_root, subfolder=contract.scheduler_subfolder, torch_dtype=scheduler_dtype)
 
     load_plan = resolve_dit_load_plan(contract)
     if contract.model_format in ("safetensors", "sharded_safetensors"):
+        if load_plan.loader_kind.endswith("int8") and dit_dtype != torch.bfloat16:
+            raise RuntimeError(
+                "LongCat Avatar INT8 DiT loading remains bf16-bound; "
+                f"current dtype policy selected {dit_dtype}. Use a bf16-capable MPS runtime or non-INT8 weights."
+            )
         if load_plan.loader_kind == "official_sharded_int8":
             print("[INFO] Loading official sharded INT8 quantized DiT model...")
             dit = load_quantized_dit(
@@ -192,7 +205,7 @@ def load_longcat_video_model(model_path,vae_path,distill_checkpoint_path="", nod
             X=dit.load_state_dict(sd, strict=False,assign=True)
             validate_state_dict_result("DiT", X)
             del sd
-            dit=dit.eval().to(torch.bfloat16)
+            dit=dit.eval().to(dit_dtype)
             #dit.cp_split_hw=[1,1]
             #dit = LongCatVideoAvatarTransformer3DModel.from_pretrained(os.path.join(node_longcat_path, 'LongCat_Video/LongCat-Video'), subfolder="base_model", cp_split_hw=cp_split_hw, torch_dtype=torch.bfloat16)
         else:

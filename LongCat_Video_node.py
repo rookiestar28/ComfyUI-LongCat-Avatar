@@ -148,7 +148,18 @@ class LongCat_Video_SM_Model(io.ComfyNode):
             )
     @classmethod
     def execute(cls, inference_weight_mode,attention_mode,auto_download_missing_weights,vae,lora) -> io.NodeOutput:
-        validate_attention_mode_for_device(attention_mode, get_runtime_device())
+        runtime_device = get_runtime_device()
+        validate_attention_mode_for_device(attention_mode, runtime_device)
+        dtype_policy = resolve_backend_dtype_policy(runtime_device, torch_module=torch)
+        print(
+            "[INFO] LongCat model dtype policy: "
+            f"backend={dtype_policy.backend}, "
+            f"text={dtype_policy.text_encoder_precision}, "
+            f"audio={dtype_policy.audio_encoder_precision}, "
+            f"dit={dtype_policy.dit_precision}, "
+            f"vae={dtype_policy.vae_precision}, "
+            f"math={dtype_policy.math_precision}"
+        )
         clear_comfyui_cache()
         diffusion_models = _resolve_single_file_model_name(inference_weight_mode)
         dit_path=folder_paths.get_full_path("diffusion_models",diffusion_models) if diffusion_models is not None else None
@@ -168,6 +179,10 @@ class LongCat_Video_SM_Model(io.ComfyNode):
                 checkpoint_source=inference_weight_mode,
                 official_checkpoint_path=official_checkpoint_path,
                 attention_mode=attention_mode,
+                tokenizer_dtype=dtype_policy.text_encoder_dtype,
+                vae_dtype=dtype_policy.vae_dtype,
+                scheduler_dtype=dtype_policy.dit_dtype,
+                dit_dtype=dtype_policy.dit_dtype,
             )
         else:
             model_path=dit_path
@@ -181,6 +196,10 @@ class LongCat_Video_SM_Model(io.ComfyNode):
                 use_int8=use_int8,
                 checkpoint_source=inference_weight_mode,
                 attention_mode=attention_mode,
+                tokenizer_dtype=dtype_policy.text_encoder_dtype,
+                vae_dtype=dtype_policy.vae_dtype,
+                scheduler_dtype=dtype_policy.dit_dtype,
+                dit_dtype=dtype_policy.dit_dtype,
             )
         return io.NodeOutput(model)
 

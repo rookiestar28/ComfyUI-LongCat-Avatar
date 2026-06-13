@@ -246,6 +246,63 @@ class NodeSchemaContractTests(unittest.TestCase):
                     lora="none",
                 )
 
+    def test_model_execute_passes_mps_dtype_policy_to_loader(self):
+        with loaded_longcat_node_module() as node_module:
+            calls = []
+            policy_calls = []
+            node_module.get_runtime_device = lambda: "mps"
+
+            policy = SimpleNamespace(
+                backend="mps",
+                text_encoder_precision="bf16",
+                audio_encoder_precision="fp32",
+                dit_precision="bf16",
+                vae_precision="bf16",
+                math_precision="fp32",
+                text_encoder_dtype="bfloat16",
+                vae_dtype="bfloat16",
+                dit_dtype="bfloat16",
+            )
+
+            def fake_policy(device, **kwargs):
+                policy_calls.append((device, kwargs))
+                return policy
+
+            def fake_load(*args, **kwargs):
+                calls.append((args, kwargs))
+                return "model"
+
+            node_module.resolve_backend_dtype_policy = fake_policy
+            node_module.load_longcat_video_model = fake_load
+
+            result = node_module.LongCat_Video_SM_Model.execute(
+                inference_weight_mode="single_file_safetensors",
+                attention_mode="sdpa",
+                auto_download_missing_weights=True,
+                vae="none",
+                lora="none",
+            )
+
+        self.assertEqual(result, ("model",))
+        self.assertEqual(policy_calls[0][0], "mps")
+        self.assertEqual(calls[0][1]["tokenizer_dtype"], "bfloat16")
+        self.assertEqual(calls[0][1]["vae_dtype"], "bfloat16")
+        self.assertEqual(calls[0][1]["scheduler_dtype"], "bfloat16")
+        self.assertEqual(calls[0][1]["dit_dtype"], "bfloat16")
+
+    def test_model_loader_exposes_component_dtype_parameters(self):
+        source = Path("LongCat_Video/run_demo_avatar_single_audio_to_video.py").read_text(encoding="utf-8")
+
+        self.assertIn("tokenizer_dtype=None", source)
+        self.assertIn("vae_dtype=None", source)
+        self.assertIn("scheduler_dtype=None", source)
+        self.assertIn("dit_dtype=None", source)
+        self.assertIn("torch_dtype=tokenizer_dtype", source)
+        self.assertIn("torch_dtype=vae_dtype", source)
+        self.assertIn("vae=vae.eval().to(vae_dtype)", source)
+        self.assertIn("torch_dtype=scheduler_dtype", source)
+        self.assertIn("dit=dit.eval().to(dit_dtype)", source)
+
     def test_model_mode_resolves_autoload_sources(self):
         with loaded_longcat_node_module() as node_module:
             self.assertEqual(
