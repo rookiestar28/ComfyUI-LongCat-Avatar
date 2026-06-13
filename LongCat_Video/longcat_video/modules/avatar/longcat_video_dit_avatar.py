@@ -2,7 +2,6 @@ from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import torch.amp as amp
 
 import numpy as np
 from einops import rearrange
@@ -15,7 +14,7 @@ from safetensors.torch import load_file
 from ..lora_utils import create_lora_network
 from ...context_parallel import context_parallel_util
 from ..attention import MultiHeadCrossAttention
-from ..blocks import TimestepEmbedder, CaptionEmbedder, PatchEmbed3D, FeedForwardSwiGLU, FinalLayer_FP32, LayerNorm_FP32, modulate_fp32
+from ..blocks import TimestepEmbedder, CaptionEmbedder, PatchEmbed3D, FeedForwardSwiGLU, FinalLayer_FP32, LayerNorm_FP32, modulate_fp32, fp32_modulation_context
 
 from .attention import Attention, SingleStreamAttention
 from .blocks import AudioProjModel
@@ -135,7 +134,7 @@ class LongCatAvatarSingleStreamBlock(nn.Module):
         T, _, _ = latent_shape # S != T*H*W in case of CP split on H*W.
 
         # compute modulation params in fp32
-        with amp.autocast(device_type='cuda', dtype=torch.float32):
+        with fp32_modulation_context(x):
             shift_msa, scale_msa, gate_msa, \
             shift_mlp, scale_mlp, gate_mlp = \
                 self.adaLN_modulation(t).unsqueeze(2).chunk(6, dim=-1) # [B, T, 1, C]
@@ -156,7 +155,7 @@ class LongCatAvatarSingleStreamBlock(nn.Module):
         else:
             x_s, x_ref_attn_map = attn_outputs
 
-        with amp.autocast(device_type='cuda', dtype=torch.float32):
+        with fp32_modulation_context(x):
             x = x + (gate_msa * x_s.view(B, -1, N//T, C)).view(B, -1, C) # [B, N, C]
         x = x.to(x_dtype)
 
@@ -171,14 +170,14 @@ class LongCatAvatarSingleStreamBlock(nn.Module):
             if kv_cache is not None:
                 num_cond_latents = 0
 
-            with amp.autocast(device_type='cuda', dtype=torch.float32):
+            with fp32_modulation_context(x):
                 audio_shift_mca, audio_scale_mca, audio_gate_mca = \
                         self.audio_adaLN_modulation(t[:, num_cond_latents:]).unsqueeze(2).chunk(3, dim=-1) # [B, T, 1, C]
 
             audio_output_cond, audio_output_noise = self.audio_cross_attn(self.pre_video_crs_attn_norm(x), self.pre_audio_crs_attn_norm(audio_hidden_states), \
                                                                             shape=latent_shape, num_cond_latents=num_cond_latents, x_ref_attn_map=x_ref_attn_map, human_num=human_num)
 
-            with amp.autocast(device_type='cuda', dtype=torch.float32):
+            with fp32_modulation_context(x):
                 audio_output_noise = modulate_fp32(self.mod_norm_attn, audio_output_noise.view(B, T-num_cond_latents, -1, C), audio_shift_mca, audio_scale_mca).view(B, -1, C)
                 audio_add_x = (audio_gate_mca * audio_output_noise.view(B, T-num_cond_latents, -1, C)).view(B, -1, C) # [B, N, C]
                 if audio_output_cond is not None:
@@ -189,7 +188,7 @@ class LongCatAvatarSingleStreamBlock(nn.Module):
         # ffn with modulation
         x_m = modulate_fp32(self.mod_norm_ffn, x.view(B, -1, N//T, C), shift_mlp, scale_mlp).view(B, -1, C)
         x_s = self.ffn(x_m)
-        with amp.autocast(device_type='cuda', dtype=torch.float32):
+        with fp32_modulation_context(x):
             x = x + (gate_mlp * x_s.view(B, -1, N//T, C)).view(B, -1, C) # [B, N, C]
         x = x.to(x_dtype)
 
@@ -469,7 +468,7 @@ class LongCatVideoAvatarTransformer3DModel(
 
         hidden_states = self.x_embedder(hidden_states)  # [B, N, C]
 
-        with amp.autocast(device_type='cuda', dtype=torch.float32):
+        with fp32_modulation_context(hidden_states):
             t = self.t_embedder(timestep.float().flatten(), dtype=torch.float32).reshape(B, N_t, -1)  # [B, T, C_t]
 
         encoder_hidden_states = self.y_embedder(encoder_hidden_states)  # [B, 1, N_token, C]

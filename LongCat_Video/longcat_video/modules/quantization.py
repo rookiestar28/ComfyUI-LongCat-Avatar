@@ -206,8 +206,9 @@ def load_quantized_dit(
 
     # Override with kwargs
     config.update(kwargs)
-    from ...attention_contract import print_attention_diagnostics
+    from ...attention_contract import apply_attention_mode_to_config, print_attention_diagnostics
 
+    config = apply_attention_mode_to_config(config, attention_mode)
     print_attention_diagnostics(attention_mode, config)
 
     # Instantiate model (empty weights)

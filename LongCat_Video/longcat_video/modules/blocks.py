@@ -4,7 +4,7 @@
 # https://github.com/openai/glide-text2im/blob/main/glide_text2im/nn.py
 # https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py#L14
 
-
+from contextlib import nullcontext
 import math
 import torch
 import torch.nn as nn
@@ -134,6 +134,20 @@ def modulate_fp32(norm_func, x, shift, scale):
     return x
 
 
+def _device_type(value):
+    device = getattr(value, "device", value)
+    device_type = getattr(device, "type", None)
+    if device_type is not None:
+        return str(device_type)
+    return str(device).split(":", 1)[0]
+
+
+def fp32_modulation_context(value):
+    if _device_type(value) == "cuda":
+        return amp.autocast(device_type="cuda", dtype=torch.float32)
+    return nullcontext()
+
+
 class FinalLayer_FP32(nn.Module):
     """
     The final layer of DiT.
@@ -156,7 +170,7 @@ class FinalLayer_FP32(nn.Module):
         B, N, C = x.shape
         T, _, _ = latent_shape
 
-        with amp.autocast('cuda', dtype=torch.float32):
+        with fp32_modulation_context(x):
             shift, scale = self.adaLN_modulation(t).unsqueeze(2).chunk(2, dim=-1) # [B, T, 1, C]
             x = modulate_fp32(self.norm_final, x.view(B, T, -1, C), shift, scale).view(B, N, C)
             x = self.linear(x)
