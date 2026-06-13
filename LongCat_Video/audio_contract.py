@@ -5,6 +5,8 @@ import math
 import os
 from typing import Any
 
+from LongCat_Video.backend_capabilities import normalize_backend_type
+
 
 AVATAR_SAMPLE_RATE = 16000
 AVATAR_SAVE_FPS = 25
@@ -24,6 +26,13 @@ _SUPPORTED_LONGCAT_AVATAR_WHISPER_ENCODERS_LOWER = tuple(
     encoder.lower() for encoder in SUPPORTED_LONGCAT_AVATAR_WHISPER_ENCODERS
 )
 LONGCAT_AVATAR_WHISPER_STATE_DICT_PREFIX = "model."
+
+
+def resolve_audio_embedding_device(runtime_device: Any) -> Any:
+    backend = normalize_backend_type(runtime_device)
+    if backend in {"cuda", "mps"}:
+        return runtime_device
+    return "cpu"
 
 
 def validate_longcat_avatar_whisper_model_name(audio_encoder_name: str) -> str:

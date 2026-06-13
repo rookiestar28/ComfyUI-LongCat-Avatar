@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 from LongCat_Video.audio_contract import (
@@ -23,6 +24,7 @@ from LongCat_Video.audio_contract import (
     ensure_mono_waveform_array,
     normalize_longcat_avatar_whisper_state_dict,
     prepared_multi_audio_length,
+    resolve_audio_embedding_device,
     validate_avatar_audio_payload_metadata,
     validate_audio_conditioning_payload,
     validate_audio_embedding,
@@ -187,6 +189,24 @@ class AudioContractTests(unittest.TestCase):
 
     def test_whisper_load_result_allows_exact_match(self):
         validate_longcat_avatar_whisper_load_result(SimpleNamespace(missing_keys=[], unexpected_keys=[]))
+
+    def test_audio_embedding_device_follows_runtime_backend(self):
+        self.assertEqual(resolve_audio_embedding_device("mps"), "mps")
+        self.assertEqual(resolve_audio_embedding_device("mps:0"), "mps:0")
+        self.assertEqual(resolve_audio_embedding_device("cuda:0"), "cuda:0")
+        self.assertEqual(resolve_audio_embedding_device("cpu"), "cpu")
+        self.assertEqual(resolve_audio_embedding_device("privateuseone"), "cpu")
+
+    def test_audio_encode_runtime_no_longer_uses_global_cuda_availability(self):
+        source = Path("LongCat_Video/run_demo_avatar_single_audio_to_video.py").read_text(encoding="utf-8")
+
+        get_audio_emb_source = source[
+            source.index("def get_audio_emb(") : source.index("\ndef load_audio_vocal", source.index("def get_audio_emb("))
+        ]
+
+        self.assertIn("audio_embedding_device = resolve_audio_embedding_device(device)", get_audio_emb_source)
+        self.assertIn("device=audio_embedding_device", get_audio_emb_source)
+        self.assertNotIn('device="cuda" if torch.cuda.is_available() else "cpu"', get_audio_emb_source)
 
     def test_generate_duration_matches_official_formula(self):
         duration = calculate_generate_duration(AVATAR_SAVE_FPS, 3)

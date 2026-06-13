@@ -41,6 +41,7 @@ from .audio_contract import (
     calculate_source_sample_count_for_prepared_audio_lengths,
     calculate_target_output_frames_for_sample_count,
     ensure_mono_waveform_array,
+    resolve_audio_embedding_device,
     target_sample_count,
     validate_audio_conditioning_payload,
     validate_audio_embedding,
@@ -277,6 +278,7 @@ def get_audio_emb(audio_encoder,audio,left_audio,audio_type,save_fps,device,p_bo
     num_frames=93
     num_cond_frames = 13
     audio_stride=1
+    audio_embedding_device = resolve_audio_embedding_device(device)
     validate_audio_type(audio_type)
 
     speech_array, sr = prepare_audio(audio)
@@ -318,8 +320,8 @@ def get_audio_emb(audio_encoder,audio,left_audio,audio_type,save_fps,device,p_bo
         )
         left_speech_array_ext, right_speech_array_ext = audio_prepare_multi(left_speech_array,speech_array, generate_duration, sr=sr, audio_type=audio_type)
         if isinstance(audio_encoder,dict):
-            left_full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(device), audio_encoder["audio_feature_extractor"], left_speech_array_ext, fps=save_fps*audio_stride, device="cuda" if torch.cuda.is_available() else "cpu", sample_rate=sr)
-            full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(device), audio_encoder["audio_feature_extractor"], right_speech_array_ext, fps=save_fps*audio_stride, device="cuda" if torch.cuda.is_available() else "cpu", sample_rate=sr)
+            left_full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(audio_embedding_device), audio_encoder["audio_feature_extractor"], left_speech_array_ext, fps=save_fps*audio_stride, device=audio_embedding_device, sample_rate=sr)
+            full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(audio_embedding_device), audio_encoder["audio_feature_extractor"], right_speech_array_ext, fps=save_fps*audio_stride, device=audio_embedding_device, sample_rate=sr)
         else:
             left_full_audio_emb = get_audio_embedding_whisper_(audio_encoder, left_speech_array_ext, fps=save_fps*audio_stride, )
             full_audio_emb = get_audio_embedding_whisper_(audio_encoder, right_speech_array_ext, fps=save_fps*audio_stride,)
@@ -330,7 +332,7 @@ def get_audio_emb(audio_encoder,audio,left_audio,audio_type,save_fps,device,p_bo
         )
         if use_background_silent_audio:
             if isinstance(audio_encoder,dict):
-                back_full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(device), audio_encoder["audio_feature_extractor"], np.zeros_like(left_speech_array_ext), fps=save_fps*audio_stride, device="cuda" if torch.cuda.is_available() else "cpu", sample_rate=sr)
+                back_full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(audio_embedding_device), audio_encoder["audio_feature_extractor"], np.zeros_like(left_speech_array_ext), fps=save_fps*audio_stride, device=audio_embedding_device, sample_rate=sr)
             else:
                 back_full_audio_emb = get_audio_embedding_whisper_(audio_encoder,np.zeros_like(left_speech_array_ext), fps=save_fps*audio_stride, )
         if use_background_silent_audio:
@@ -358,7 +360,7 @@ def get_audio_emb(audio_encoder,audio,left_audio,audio_type,save_fps,device,p_bo
         if added_sample_nums > 0:
             speech_array = np.append(speech_array, [0.]*added_sample_nums)
         if isinstance(audio_encoder,dict):
-            full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(device), audio_encoder["audio_feature_extractor"], speech_array, fps=save_fps*audio_stride, device="cuda" if torch.cuda.is_available() else "cpu", sample_rate=sr)
+            full_audio_emb = get_audio_embedding_whisper(audio_encoder["audio_encoder"].to(audio_embedding_device), audio_encoder["audio_feature_extractor"], speech_array, fps=save_fps*audio_stride, device=audio_embedding_device, sample_rate=sr)
         else:
             full_audio_emb=get_audio_embedding_whisper_(audio_encoder, speech_array, fps=save_fps*audio_stride, ) #torch.Size([2142, 5, 1280])
     validate_audio_embedding(full_audio_emb, "full_audio_emb")
