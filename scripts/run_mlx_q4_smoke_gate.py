@@ -3,11 +3,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import platform
 import shutil
 import subprocess
+import sys
+import uuid
+from pathlib import Path
 from typing import Any
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from LongCat_Video.mlx_bridge import MlxBridgeResult, run_mlx_bridge_job
 from LongCat_Video.mlx_runner_contract import load_mlx_runner_response_json, sanitize_log_text
@@ -92,6 +97,9 @@ def run_smoke_gate(
     response_status = "missing"
     timings: dict[str, float] = {}
     notes: list[str] = []
+    job_id = f"gate_{uuid.uuid4().hex[:12]}"
+    expected_job_dir = Path(args.output_root).expanduser().resolve() / f"{args.output_basename}_{job_id}"
+    expected_response_path = expected_job_dir / "response.json"
 
     try:
         result = bridge_runner(
@@ -112,11 +120,17 @@ def run_smoke_gate(
             mode="generate",
             timeout_seconds=args.timeout_seconds,
             retain_job_dir=True,
+            job_id=job_id,
             image_writer=_copy_file_writer(args.image),
             audio_writer=_copy_file_writer(args.audio),
         )
         response_valid, response_status, timings = _response_fields(result.response_path, result.job_dir)
     except Exception as exc:
+        if expected_response_path.is_file():
+            response_valid, response_status, timings = _response_fields(
+                os.fspath(expected_response_path),
+                os.fspath(expected_job_dir),
+            )
         notes.append(f"bridge error: {sanitize_log_text(exc.__class__.__name__)}")
 
     artifact_present, artifact_kind = _artifact_fields(result)

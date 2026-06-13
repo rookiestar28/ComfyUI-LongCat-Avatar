@@ -1,11 +1,18 @@
 import argparse
 import importlib.util
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-from LongCat_Video.mlx_runner_contract import MLX_RUNNER_SCHEMA_VERSION, MlxRunnerResponse, dump_mlx_runner_response_json
+from LongCat_Video.mlx_runner_contract import (
+    MLX_RUNNER_SCHEMA_VERSION,
+    MlxRunnerError,
+    MlxRunnerResponse,
+    dump_mlx_runner_response_json,
+)
 
 
 SCRIPT_PATH = Path("scripts/run_mlx_q4_smoke_gate.py")
@@ -106,6 +113,45 @@ class MlxQ4SmokeScriptTests(unittest.TestCase):
         self.assertEqual(evidence["status"], "failed")
         self.assertFalse(evidence["artifact_present"])
         self.assertNotIn("local path should not be serialized", json.dumps(evidence))
+
+    def test_smoke_script_reads_error_response_after_bridge_error(self):
+        def bridge_runner(**kwargs):
+            job_dir = Path(kwargs["output_root"]) / f'{kwargs["output_basename"]}_{kwargs["job_id"]}'
+            job_dir.mkdir()
+            response_path = job_dir / "response.json"
+            dump_mlx_runner_response_json(
+                MlxRunnerResponse(
+                    schema_version=MLX_RUNNER_SCHEMA_VERSION,
+                    status="error",
+                    error=MlxRunnerError(
+                        error_type="MlxRunnerCliError",
+                        message="MLX weight validation failed.",
+                        stage="probe",
+                    ),
+                ),
+                response_path,
+            )
+            raise RuntimeError("do not serialize this message")
+
+        code = self.module.run_smoke_gate(self.args(), bridge_runner=bridge_runner, memory_reader=lambda _: 32)
+
+        self.assertEqual(code, 1)
+        evidence = json.loads(self.evidence.read_text(encoding="utf-8"))
+        self.assertTrue(evidence["response_json_valid"])
+        self.assertEqual(evidence["response_status"], "error")
+        self.assertNotIn("do not serialize this message", json.dumps(evidence))
+
+    def test_script_can_run_directly_from_repo_root(self):
+        completed = subprocess.run(
+            [sys.executable, str(SCRIPT_PATH), "--help"],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("LongCat MLX q4 support-gate smoke", completed.stdout)
 
 
 if __name__ == "__main__":
