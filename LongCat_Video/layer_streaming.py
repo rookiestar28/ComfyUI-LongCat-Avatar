@@ -1,12 +1,11 @@
 """Layer streaming wrapper for memory-efficient inference.
-Keeps most transformer/decoder layers on CPU pinned memory and streams them
-to GPU on demand, using a secondary CUDA stream to prefetch upcoming layers
-so that data transfer overlaps with compute.
+Keeps most transformer/decoder layers on CPU memory and moves active layers
+to the target accelerator on demand. CUDA stream ownership is recorded only on
+CUDA; MPS uses synchronous layer moves because it has no CUDA stream analogue.
 General-purpose: works with any ``nn.Module`` whose forward iterates over a
 ``nn.ModuleList`` attribute (e.g. ``transformer_blocks``, ``layers``).
 Each layer is evicted back to CPU immediately after its forward completes,
-and prefetch uses modular indexing so the last layer's prefetch wraps around
-to prepare early layers for the next forward pass.
+and active_count controls how many layers may remain resident.
 Example
 -------
 >>> model = build_my_model(device=torch.device("cpu"))
@@ -22,34 +21,40 @@ Example
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 import functools
+import gc
 import itertools
 import logging
-from typing import Any,TypeVar
-import gc
+from typing import Any, TypeVar
+
 import torch
 from torch import nn
-from contextlib import contextmanager
-from collections.abc import Iterator
 
-from LongCat_Video.backend_capabilities import normalize_backend_type
+from LongCat_Video.backend_capabilities import empty_cache, normalize_backend_type, synchronize
 
 logger = logging.getLogger(__name__)
 _M = TypeVar("_M", bound=torch.nn.Module)
 T = TypeVar("T")
 
 
-def cleanup_memory() -> None:
+def cleanup_memory(device: torch.device | str = "cuda") -> None:
     gc.collect()
-    torch.cuda.empty_cache()
-    torch.cuda.synchronize()
+    empty_cache(device, torch_module=torch)
+    synchronize(device, torch_module=torch)
 
 
-def require_cuda_streaming_device(target_device: torch.device) -> None:
-    if normalize_backend_type(target_device) != "cuda":
+def require_streaming_device(target_device: torch.device) -> None:
+    if normalize_backend_type(target_device) not in {"cuda", "mps"}:
         raise RuntimeError(
-            "Layer streaming uses CUDA streams and record_stream; it is disabled for MPS in this branch."
+            "Layer streaming requires a CUDA or MPS device."
         )
+
+
+def _record_tensor_stream(tensor: torch.Tensor, target_device: torch.device) -> None:
+    if normalize_backend_type(target_device) == "cuda":
+        tensor.record_stream(torch.cuda.current_stream(target_device))
 
 # LayerStreamingWrapper from https://github.com/Lightricks/LTX-2
 
@@ -121,9 +126,9 @@ class SimpleLayerStreamingWrapper_Dual(nn.Module):
             def _pre_hook(module: nn.Module, input, *, idx: int, s: _SimpleLayerStore):
                 # 加载当前层到GPU
                 s.load_layer_to_gpu(idx, module)
-                # 记录流，防止内存被提前回收
+                # 记录 CUDA stream，防止内存被提前回收；MPS has no CUDA stream equivalent.
                 for param in itertools.chain(module.parameters(), module.buffers()):
-                    param.data.record_stream(torch.cuda.current_stream(self._target_device))
+                    _record_tensor_stream(param.data, self._target_device)
 
             def _post_hook(module: nn.Module, input, output, *, idx: int, s: _SimpleLayerStore):
                 # 处理完后立即将层移回CPU
@@ -151,7 +156,7 @@ def _streaming_model(
     prefetch_count: int,
 ) -> Iterator[_M]:
     """Wrap *model* with :class:`LayerStreamingWrapper`, yield it, then tear down."""
-    require_cuda_streaming_device(target_device)
+    require_streaming_device(target_device)
     # 根据传入的 layers_attr 类型自动路由到对应的 Wrapper
     if isinstance(layers_attr, list):
         wrapped = SimpleLayerStreamingWrapper_Dual(
@@ -172,10 +177,9 @@ def _streaming_model(
         yield wrapped  # type: ignore[misc]
     finally:
         wrapped.teardown()
-        cleanup_memory()
-        torch.cuda.synchronize(device=target_device)
+        cleanup_memory(target_device)
         try:
-            if hasattr(torch._C, "_host_emptyCache"):
+            if normalize_backend_type(target_device) == "cuda" and hasattr(torch._C, "_host_emptyCache"):
                 torch._C._host_emptyCache()
         except Exception:
             print("Host empty cache cleanup failed; ignoring.", exc_info=True)
@@ -190,7 +194,7 @@ def _streaming_model_(
     prefetch_count: int,
 ) -> Iterator[_M]:
     """Wrap *model* with :class:`LayerStreamingWrapper`, yield it, then tear down."""
-    require_cuda_streaming_device(target_device)
+    require_streaming_device(target_device)
     wrapped = SimpleLayerStreamingWrapper(
         model,
         layers_attr=layers_attr,
@@ -201,14 +205,13 @@ def _streaming_model_(
         yield wrapped  # type: ignore[misc]
     finally:
         wrapped.teardown()
-        cleanup_memory()
+        cleanup_memory(target_device)
         # Flush the host (pinned) memory cache so that freed pinned pages are
         # returned to the OS.  Without this, sequential streaming models
         # (e.g. text encoder then transformer) exhaust host memory because the
         # CachingHostAllocator keeps freed blocks cached indefinitely.
-        torch.cuda.synchronize(device=target_device)
         try:
-            if hasattr(torch._C, "_host_emptyCache"):
+            if normalize_backend_type(target_device) == "cuda" and hasattr(torch._C, "_host_emptyCache"):
                 torch._C._host_emptyCache()
         except Exception:
             print("Host empty cache cleanup failed; ignoring.", exc_info=True)
@@ -298,9 +301,9 @@ class SimpleLayerStreamingWrapper(nn.Module):
         def _pre_hook(module: nn.Module, input, *, idx: int):
             # 加载当前层到GPU
             self._store.load_layer_to_gpu(idx, module)
-            # 记录流，防止内存被提前回收
+            # 记录 CUDA stream，防止内存被提前回收；MPS has no CUDA stream equivalent.
             for param in itertools.chain(module.parameters(), module.buffers()):
-                param.data.record_stream(torch.cuda.current_stream(self._target_device))
+                _record_tensor_stream(param.data, self._target_device)
 
         def _post_hook(module: nn.Module, input, output, *, idx: int):
             # 处理完后立即将层移回CPU

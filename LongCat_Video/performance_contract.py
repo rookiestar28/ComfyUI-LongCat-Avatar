@@ -125,12 +125,14 @@ def build_runtime_plan(device: Any, block_num: Any, offload_device: Any = "cpu")
     normalized_block = normalize_block_num(block_num)
     normalized_offload_device = resolve_vae_offload_device(offload_device, normalized_device)
     if normalize_runtime_backend(normalized_device) == "mps":
+        streaming_prefetch_count = normalized_block if normalized_block > 0 else None
+        eager_full_load = normalized_block == 0
         return AvatarRuntimePlan(
             device=normalized_device,
-            block_num=0,
-            streaming_prefetch_count=None,
-            move_dit_to_device=True,
-            offload_dit_after_generate=True,
+            block_num=normalized_block,
+            streaming_prefetch_count=streaming_prefetch_count,
+            move_dit_to_device=eager_full_load,
+            offload_dit_after_generate=eager_full_load,
             vae_offload_device=normalized_offload_device,
         )
     streaming_prefetch_count = normalized_block if normalized_block > 0 else None
@@ -206,15 +208,15 @@ def build_mps_feasibility_report(
         recommended_dtype=str(recommended_dtype),
         attention_backend=str(attention_backend),
         cuda_only_assumptions=(
-            "MPS Sampler runtime plan forces non-streaming eager load; CUDA layer streaming remains unavailable.",
-            "Embedded Avatar DiT blocks use torch.amp.autocast(device_type='cuda').",
-            "Layer streaming and debug paths use torch.cuda streams, synchronization, and memory APIs.",
+            "MPS positive block_num uses backend-aware layer streaming; CUDA stream recording remains CUDA-only.",
+            "Embedded CUDA autocast, stream, and memory APIs must stay behind backend guards.",
+            "MPS layer streaming uses synchronous layer moves and does not use CUDA streams or record_stream.",
             "Optional FlashAttention, xFormers, SageAttention, and Triton block-sparse paths are CUDA-oriented.",
         ),
         initialization_blockers=(
-            "MPS model load has no smoke evidence for DiT, VAE, Whisper audio encoder, and native UMT5 together.",
-            "bf16/fp16 dtype parity and attention fallback correctness are unverified on Apple Silicon.",
-            "End-to-end audio-driven frame timing and video decode memory behavior are unverified on MPS.",
+            "Minimal single-avatar MPS segment still lacks a first output artifact.",
+            "Avatar DiT SDPA attention currently fails with an invalid large buffer allocation on the tested M2 host.",
+            "End-to-end audio-driven frame timing, video decode memory behavior, and support wording remain unaccepted on MPS.",
         ),
         non_merge_condition=MPS_NON_MERGE_CONDITION,
     )

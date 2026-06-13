@@ -4,6 +4,21 @@ from pathlib import Path
 
 from LongCat_Video.mps_dit_smoke import STATUS_BLOCKED, STATUS_PASS, run_mps_dit_attention_smoke
 
+try:
+    import torch
+    from LongCat_Video.longcat_video.modules.blocks import (
+        LayerNorm_FP32,
+        modulate_mps_low_memory_chunked,
+        modulate_fp32,
+        modulate_fp32_chunked,
+    )
+except ModuleNotFoundError:
+    torch = None
+    LayerNorm_FP32 = None
+    modulate_mps_low_memory_chunked = None
+    modulate_fp32 = None
+    modulate_fp32_chunked = None
+
 
 class FakeMPSBackend:
     def __init__(self, *, available=True):
@@ -130,6 +145,58 @@ class FakeDit:
 
 
 class MPSDitSmokeTests(unittest.TestCase):
+    @unittest.skipIf(torch is None, "PyTorch is optional for repo-local contract tests.")
+    def test_chunked_fp32_modulation_matches_whole_tensor_reference_for_broadcast_params(self):
+        torch.manual_seed(17077)
+        norm = LayerNorm_FP32(5, eps=1e-6, elementwise_affine=False)
+        x = torch.randn(2, 3, 7, 5, dtype=torch.bfloat16)
+        shift = torch.randn(2, 3, 1, 5, dtype=torch.float32)
+        scale = torch.randn(2, 3, 1, 5, dtype=torch.float32)
+
+        expected = modulate_fp32(norm, x, shift, scale)
+        actual = modulate_fp32_chunked(norm, x, shift, scale, chunk_dim=2, max_chunk_tokens=2)
+
+        self.assertEqual(actual.dtype, x.dtype)
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+    @unittest.skipIf(torch is None, "PyTorch is optional for repo-local contract tests.")
+    def test_chunked_fp32_modulation_matches_whole_tensor_reference_for_per_token_params(self):
+        torch.manual_seed(17078)
+        norm = LayerNorm_FP32(5, eps=1e-6, elementwise_affine=False)
+        x = torch.randn(2, 3, 7, 5, dtype=torch.float32)
+        shift = torch.randn(2, 3, 7, 5, dtype=torch.float32)
+        scale = torch.randn(2, 3, 7, 5, dtype=torch.float32)
+
+        expected = modulate_fp32(norm, x, shift, scale)
+        actual = modulate_fp32_chunked(norm, x, shift, scale, chunk_dim=2, max_chunk_tokens=3)
+
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+    @unittest.skipIf(torch is None, "PyTorch is optional for repo-local contract tests.")
+    def test_chunked_fp32_modulation_rejects_hidden_dimension_split(self):
+        norm = LayerNorm_FP32(5, eps=1e-6, elementwise_affine=False)
+        x = torch.randn(2, 3, 7, 5, dtype=torch.float32)
+        shift = torch.randn(2, 3, 1, 5, dtype=torch.float32)
+        scale = torch.randn(2, 3, 1, 5, dtype=torch.float32)
+
+        with self.assertRaisesRegex(ValueError, "hidden normalization dimension"):
+            modulate_fp32_chunked(norm, x, shift, scale, chunk_dim=-1, max_chunk_tokens=2)
+
+    @unittest.skipIf(torch is None, "PyTorch is optional for repo-local contract tests.")
+    def test_mps_low_memory_modulation_preserves_shape_dtype_and_bounded_error(self):
+        torch.manual_seed(17079)
+        norm = LayerNorm_FP32(5, eps=1e-6, elementwise_affine=False)
+        x = torch.randn(2, 3, 7, 5, dtype=torch.bfloat16)
+        shift = torch.randn(2, 3, 1, 5, dtype=torch.float32) * 0.1
+        scale = torch.randn(2, 3, 1, 5, dtype=torch.float32) * 0.1
+
+        expected = modulate_fp32(norm, x, shift, scale).float()
+        actual = modulate_mps_low_memory_chunked(norm, x, shift, scale, chunk_dim=2, max_chunk_tokens=2)
+
+        self.assertEqual(actual.shape, x.shape)
+        self.assertEqual(actual.dtype, x.dtype)
+        torch.testing.assert_close(actual.float(), expected, rtol=0.02, atol=0.03)
+
     def test_success_records_dit_boundary_metadata(self):
         fake_torch = FakeTorch()
         fake_dit = FakeDit()
@@ -225,6 +292,21 @@ class MPSDitSmokeTests(unittest.TestCase):
         self.assertNotIn("amp.autocast", avatar_source)
         self.assertNotIn("device_type='cuda'", avatar_source)
         self.assertIn("def fp32_modulation_context", blocks_source)
+
+    def test_avatar_dit_routes_large_modulation_through_memory_safe_helper(self):
+        avatar_source = Path("LongCat_Video/longcat_video/modules/avatar/longcat_video_dit_avatar.py").read_text(
+            encoding="utf-8"
+        )
+        blocks_source = Path("LongCat_Video/longcat_video/modules/blocks.py").read_text(encoding="utf-8")
+
+        self.assertIn("modulate_fp32_memory_safe", avatar_source)
+        self.assertIn("modulation_param_for_activation", avatar_source)
+        self.assertIn("def modulate_fp32_chunked", blocks_source)
+        self.assertIn("def modulate_mps_low_memory_chunked", blocks_source)
+        self.assertIn("def modulation_param_for_activation", blocks_source)
+        self.assertIn("MPS_MODULATION_MAX_CHUNK_TOKENS", blocks_source)
+        self.assertNotIn("modulate_fp32(self.mod_norm_attn, x.view(B, T, -1, C)", avatar_source)
+        self.assertNotIn("modulate_fp32(self.mod_norm_ffn, x.view(B, -1, N//T, C)", avatar_source)
 
     def test_quantized_dit_loader_applies_attention_mode_to_config(self):
         source = Path("LongCat_Video/longcat_video/modules/quantization.py").read_text(encoding="utf-8")

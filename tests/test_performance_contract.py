@@ -127,7 +127,7 @@ class PerformanceContractTests(unittest.TestCase):
         self.assertEqual(model.calls, [("vae_to", "cuda:0")])
         self.assertEqual(empty_cache_calls, [])
 
-    def test_mps_runtime_plan_disables_cuda_streaming_and_uses_eager_cleanup(self):
+    def test_mps_runtime_plan_uses_backend_streaming_for_positive_block(self):
         plan = build_runtime_plan("mps", 3, "cuda")
         model = FakeModel()
         empty_cache_calls = []
@@ -135,20 +135,19 @@ class PerformanceContractTests(unittest.TestCase):
         apply_runtime_plan(model, plan)
 
         self.assertEqual(plan.device, "mps")
-        self.assertEqual(plan.block_num, 0)
-        self.assertIsNone(plan.streaming_prefetch_count)
-        self.assertTrue(plan.move_dit_to_device)
-        self.assertTrue(plan.offload_dit_after_generate)
+        self.assertEqual(plan.block_num, 3)
+        self.assertEqual(plan.streaming_prefetch_count, 3)
+        self.assertFalse(plan.move_dit_to_device)
+        self.assertFalse(plan.offload_dit_after_generate)
         self.assertEqual(plan.vae_offload_device, "cpu")
-        self.assertEqual(model.streaming_prefetch_count, None)
+        self.assertEqual(model.streaming_prefetch_count, 3)
         self.assertEqual(model.vae_offload_device, "cpu")
-        self.assertFalse(model.dit.lora_runtime_offload)
+        self.assertTrue(model.dit.lora_runtime_offload)
 
         cleanup_runtime_plan(model, plan, empty_cache=lambda: empty_cache_calls.append("empty"))
 
-        self.assertEqual(model.calls, [("vae_to", "mps"), ("to", "mps"), ("to", "cpu")])
-        self.assertTrue(model.dit.lora_runtime_offload)
-        self.assertEqual(empty_cache_calls, ["empty"])
+        self.assertEqual(model.calls, [("vae_to", "mps")])
+        self.assertEqual(empty_cache_calls, [])
 
     def test_runtime_plan_rejects_cpu_before_apply(self):
         with self.assertRaisesRegex(RuntimeError, "CPU is not supported"):
@@ -176,6 +175,8 @@ class PerformanceContractTests(unittest.TestCase):
         source = Path("LongCat_Video/longcat_video/pipeline_longcat_video_avatar.py").read_text(encoding="utf-8")
 
         self.assertIn("return nullcontext(self.dit)", source)
+        self.assertIn("target_device=torch.device(self.device)", source)
+        self.assertNotIn('target_device=torch.device("cuda")', source)
         self.assertNotIn("if self.streaming_prefetch_count is not None else self.dit", source)
         self.assertNotIn("model_context = self.dit", source)
         self.assertEqual(source.count("model_context = self._model_ctx(self.streaming_prefetch_count)"), 4)
@@ -183,8 +184,9 @@ class PerformanceContractTests(unittest.TestCase):
     def test_streaming_model_teardown_removes_forward_hooks(self):
         source = Path("LongCat_Video/layer_streaming.py").read_text(encoding="utf-8")
 
-        self.assertIn("require_cuda_streaming_device(target_device)", source)
-        self.assertIn("disabled for MPS", source)
+        self.assertIn("require_streaming_device(target_device)", source)
+        self.assertIn('not in {"cuda", "mps"}', source)
+        self.assertIn('normalize_backend_type(target_device) == "cuda"', source)
         self.assertIn("self._hook_handles", source)
         self.assertIn("self._hook_handles.extend((pre_hook, post_hook))", source)
         self.assertIn("handle.remove()", source)

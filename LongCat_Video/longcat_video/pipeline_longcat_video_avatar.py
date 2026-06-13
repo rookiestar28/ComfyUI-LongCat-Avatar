@@ -320,7 +320,7 @@ class LongCatVideoAvatarPipeline:
                 return _streaming_model(
                     self.dit,
                     layers_attr=["blocks"],
-                    target_device=torch.device("cuda"),
+                    target_device=torch.device(self.device),
                     prefetch_count=streaming_prefetch_count,
                 )
             from contextlib import nullcontext

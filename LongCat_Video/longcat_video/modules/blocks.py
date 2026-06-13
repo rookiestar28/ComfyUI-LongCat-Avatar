@@ -134,6 +134,155 @@ def modulate_fp32(norm_func, x, shift, scale):
     return x
 
 
+MPS_MODULATION_MAX_CHUNK_TOKENS = 16
+
+
+def _normalize_dim(dim, rank):
+    if rank <= 0:
+        raise ValueError("chunked modulation requires a tensor with at least one dimension.")
+    normalized = dim + rank if dim < 0 else dim
+    if normalized < 0 or normalized >= rank:
+        raise ValueError(f"chunk_dim {dim} is out of range for tensor rank {rank}.")
+    return normalized
+
+
+def _modulation_param_slice(value, *, dim, start, length, target_size):
+    if value.shape[dim] == target_size:
+        return value.narrow(dim, start, length)
+    if value.shape[dim] == 1:
+        return value
+    raise ValueError(
+        "modulation parameter shape is not broadcast-compatible with chunked input: "
+        f"dim={dim}, parameter_size={value.shape[dim]}, target_size={target_size}"
+    )
+
+
+def modulate_fp32_chunked(
+    norm_func,
+    x,
+    shift,
+    scale,
+    *,
+    chunk_dim=-2,
+    max_chunk_tokens=MPS_MODULATION_MAX_CHUNK_TOKENS,
+):
+    # IMPORTANT: MPS cannot afford whole-activation fp32 promotion for Avatar DiT.
+    # Chunk only token/time dimensions; LayerNorm must still see the full hidden C dimension.
+    assert shift.dtype == torch.float32, scale.dtype == torch.float32
+    rank = x.dim()
+    dim = _normalize_dim(chunk_dim, rank)
+    if dim == rank - 1:
+        raise ValueError("chunked fp32 modulation must not split the hidden normalization dimension.")
+    if max_chunk_tokens <= 0:
+        raise ValueError("max_chunk_tokens must be positive.")
+
+    target_size = x.shape[dim]
+    if target_size <= max_chunk_tokens:
+        return modulate_fp32(norm_func, x, shift, scale)
+
+    dtype = x.dtype
+    out = torch.empty_like(x)
+    for start in range(0, target_size, max_chunk_tokens):
+        length = min(max_chunk_tokens, target_size - start)
+        x_slice = x.narrow(dim, start, length)
+        shift_slice = _modulation_param_slice(shift, dim=dim, start=start, length=length, target_size=target_size)
+        scale_slice = _modulation_param_slice(scale, dim=dim, start=start, length=length, target_size=target_size)
+        chunk = norm_func(x_slice.to(torch.float32))
+        chunk = chunk * (scale_slice + 1) + shift_slice
+        out.narrow(dim, start, length).copy_(chunk.to(dtype))
+    return out
+
+
+def modulate_mps_low_memory_chunked(
+    norm_func,
+    x,
+    shift,
+    scale,
+    *,
+    chunk_dim=-2,
+    max_chunk_tokens=MPS_MODULATION_MAX_CHUNK_TOKENS,
+):
+    # IMPORTANT: On 16 GB MPS hosts, even per-slice activation fp32 casts can
+    # stall or OOM. Keep normalization chunked, then keep modulation in the
+    # activation dtype for this branch-local MPS fallback.
+    assert shift.dtype == torch.float32, scale.dtype == torch.float32
+    rank = x.dim()
+    dim = _normalize_dim(chunk_dim, rank)
+    if dim == rank - 1:
+        raise ValueError("chunked low-memory modulation must not split the hidden normalization dimension.")
+    if max_chunk_tokens <= 0:
+        raise ValueError("max_chunk_tokens must be positive.")
+
+    target_size = x.shape[dim]
+    dtype = x.dtype
+    out = torch.empty_like(x)
+    for start in range(0, target_size, max_chunk_tokens):
+        length = min(max_chunk_tokens, target_size - start)
+        x_slice = x.narrow(dim, start, length)
+        shift_slice = _modulation_param_slice(shift, dim=dim, start=start, length=length, target_size=target_size)
+        scale_slice = _modulation_param_slice(scale, dim=dim, start=start, length=length, target_size=target_size)
+        shift_slice = modulation_param_for_activation(shift_slice, x_slice)
+        scale_slice = modulation_param_for_activation(scale_slice, x_slice)
+        chunk = _low_memory_norm(norm_func, x_slice).to(dtype=dtype)
+        chunk = chunk * (scale_slice + 1) + shift_slice
+        out.narrow(dim, start, length).copy_(chunk)
+    return out
+
+
+def modulation_param_for_activation(value, activation):
+    if _device_type(activation) == "mps" and activation.dtype in (torch.bfloat16, torch.float16):
+        return value.to(dtype=activation.dtype)
+    return value
+
+
+def _low_memory_norm(norm_func, x):
+    if isinstance(norm_func, nn.LayerNorm):
+        weight = None if norm_func.weight is None else norm_func.weight.to(device=x.device, dtype=x.dtype)
+        bias = None if norm_func.bias is None else norm_func.bias.to(device=x.device, dtype=x.dtype)
+        return F.layer_norm(x, norm_func.normalized_shape, weight, bias, norm_func.eps)
+    return norm_func(x).to(dtype=x.dtype)
+
+
+def should_chunk_modulation(value, *, chunk_dim=-2, max_chunk_tokens=MPS_MODULATION_MAX_CHUNK_TOKENS):
+    if _device_type(value) != "mps":
+        return False
+    try:
+        dim = _normalize_dim(chunk_dim, value.dim())
+    except (AttributeError, ValueError):
+        return False
+    return dim != value.dim() - 1 and value.shape[dim] > max_chunk_tokens
+
+
+def modulate_fp32_memory_safe(
+    norm_func,
+    x,
+    shift,
+    scale,
+    *,
+    chunk_dim=-2,
+    max_chunk_tokens=MPS_MODULATION_MAX_CHUNK_TOKENS,
+):
+    if should_chunk_modulation(x, chunk_dim=chunk_dim, max_chunk_tokens=max_chunk_tokens):
+        if x.dtype in (torch.bfloat16, torch.float16):
+            return modulate_mps_low_memory_chunked(
+                norm_func,
+                x,
+                shift,
+                scale,
+                chunk_dim=chunk_dim,
+                max_chunk_tokens=max_chunk_tokens,
+            )
+        return modulate_fp32_chunked(
+            norm_func,
+            x,
+            shift,
+            scale,
+            chunk_dim=chunk_dim,
+            max_chunk_tokens=max_chunk_tokens,
+        )
+    return modulate_fp32(norm_func, x, shift, scale)
+
+
 def _device_type(value):
     device = getattr(value, "device", value)
     device_type = getattr(device, "type", None)

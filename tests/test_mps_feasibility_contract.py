@@ -17,9 +17,11 @@ class MPSFeasibilityContractTests(unittest.TestCase):
         self.assertEqual(report.recommended_dtype, "fp16")
         self.assertEqual(report.attention_backend, "sdpa")
         self.assertGreaterEqual(len(report.cuda_only_assumptions), 4)
-        self.assertIn("non-streaming eager load", report.cuda_only_assumptions[0])
+        self.assertIn("backend-aware layer streaming", report.cuda_only_assumptions[0])
+        self.assertIn("CUDA-only", report.cuda_only_assumptions[0])
         self.assertNotIn("require_cuda_device", report.cuda_only_assumptions[0])
         self.assertGreaterEqual(len(report.initialization_blockers), 3)
+        self.assertIn("SDPA attention", report.initialization_blockers[1])
         self.assertIn("macos-mps branch", report.non_merge_condition)
         self.assertIn("Do not merge MPS inference into main", report.non_merge_condition)
 

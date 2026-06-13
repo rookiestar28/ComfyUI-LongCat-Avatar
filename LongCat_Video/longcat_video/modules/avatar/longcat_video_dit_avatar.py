@@ -14,7 +14,7 @@ from safetensors.torch import load_file
 from ..lora_utils import create_lora_network
 from ...context_parallel import context_parallel_util
 from ..attention import MultiHeadCrossAttention
-from ..blocks import TimestepEmbedder, CaptionEmbedder, PatchEmbed3D, FeedForwardSwiGLU, FinalLayer_FP32, LayerNorm_FP32, modulate_fp32, fp32_modulation_context
+from ..blocks import TimestepEmbedder, CaptionEmbedder, PatchEmbed3D, FeedForwardSwiGLU, FinalLayer_FP32, LayerNorm_FP32, modulate_fp32_memory_safe, fp32_modulation_context, modulation_param_for_activation
 
 from .attention import Attention, SingleStreamAttention
 from .blocks import AudioProjModel
@@ -140,7 +140,7 @@ class LongCatAvatarSingleStreamBlock(nn.Module):
                 self.adaLN_modulation(t).unsqueeze(2).chunk(6, dim=-1) # [B, T, 1, C]
 
         # self attn with modulation
-        x_m = modulate_fp32(self.mod_norm_attn, x.view(B, T, -1, C), shift_msa, scale_msa).view(B, N, C)
+        x_m = modulate_fp32_memory_safe(self.mod_norm_attn, x.view(B, T, -1, C), shift_msa, scale_msa).view(B, N, C)
 
         if kv_cache is not None:
             kv_cache = (kv_cache[0].to(x.device), kv_cache[1].to(x.device))
@@ -156,6 +156,8 @@ class LongCatAvatarSingleStreamBlock(nn.Module):
             x_s, x_ref_attn_map = attn_outputs
 
         with fp32_modulation_context(x):
+            gate_msa = modulation_param_for_activation(gate_msa, x)
+            x_s = modulation_param_for_activation(x_s, x)
             x = x + (gate_msa * x_s.view(B, -1, N//T, C)).view(B, -1, C) # [B, N, C]
         x = x.to(x_dtype)
 
@@ -178,17 +180,22 @@ class LongCatAvatarSingleStreamBlock(nn.Module):
                                                                             shape=latent_shape, num_cond_latents=num_cond_latents, x_ref_attn_map=x_ref_attn_map, human_num=human_num)
 
             with fp32_modulation_context(x):
-                audio_output_noise = modulate_fp32(self.mod_norm_attn, audio_output_noise.view(B, T-num_cond_latents, -1, C), audio_shift_mca, audio_scale_mca).view(B, -1, C)
+                audio_output_noise = modulate_fp32_memory_safe(self.mod_norm_attn, audio_output_noise.view(B, T-num_cond_latents, -1, C), audio_shift_mca, audio_scale_mca).view(B, -1, C)
+                audio_gate_mca = modulation_param_for_activation(audio_gate_mca, x)
+                audio_output_noise = modulation_param_for_activation(audio_output_noise, x)
                 audio_add_x = (audio_gate_mca * audio_output_noise.view(B, T-num_cond_latents, -1, C)).view(B, -1, C) # [B, N, C]
                 if audio_output_cond is not None:
+                    audio_output_cond = modulation_param_for_activation(audio_output_cond, x)
                     audio_add_x = torch.cat([audio_output_cond, audio_add_x], dim=1).contiguous()
             x = x + audio_add_x
             x = x.to(x_dtype)
 
         # ffn with modulation
-        x_m = modulate_fp32(self.mod_norm_ffn, x.view(B, -1, N//T, C), shift_mlp, scale_mlp).view(B, -1, C)
+        x_m = modulate_fp32_memory_safe(self.mod_norm_ffn, x.view(B, -1, N//T, C), shift_mlp, scale_mlp).view(B, -1, C)
         x_s = self.ffn(x_m)
         with fp32_modulation_context(x):
+            gate_mlp = modulation_param_for_activation(gate_mlp, x)
+            x_s = modulation_param_for_activation(x_s, x)
             x = x + (gate_mlp * x_s.view(B, -1, N//T, C)).view(B, -1, C) # [B, N, C]
         x = x.to(x_dtype)
 
