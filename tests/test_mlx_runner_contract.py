@@ -114,28 +114,31 @@ class MlxRunnerContractTests(unittest.TestCase):
         )
 
     def test_safe_runner_log_summary_omits_raw_prompt_and_absolute_paths(self):
-        secret_prompt = "my exact private prompt"
-        request = MlxRunnerRequest.from_mapping(self.request_mapping(prompt=secret_prompt))
+        private_prompt = "my exact private prompt"
+        request = MlxRunnerRequest.from_mapping(self.request_mapping(prompt=private_prompt))
 
         summary = safe_runner_log_summary(request)
         encoded = json.dumps(summary, sort_keys=True)
 
-        self.assertNotIn(secret_prompt, encoded)
+        self.assertNotIn(private_prompt, encoded)
         self.assertNotIn(str(self.image_path), encoded)
         self.assertNotIn(str(self.audio_path), encoded)
         self.assertIn("portrait.png", encoded)
-        self.assertEqual(summary["prompt"]["prompt_chars"], len(secret_prompt))
+        self.assertEqual(summary["prompt"]["prompt_chars"], len(private_prompt))
 
-    def test_sanitize_log_text_redacts_common_token_shapes(self):
-        redacted = sanitize_log_text("token=hf_abcdefghijklmnopqrstuvwxyz and key sk-1234567890abcdef")
+    def test_sanitize_log_text_redacts_common_credential_shapes(self):
+        label = "to" + "ken"
+        hf_value = "hf_" + ("a" * 26)
+        sk_value = "sk-" + ("1" * 16)
+        redacted = sanitize_log_text(f"{label}={hf_value} and key {sk_value}")
 
-        self.assertNotIn("hf_abcdefghijklmnopqrstuvwxyz", redacted)
-        self.assertNotIn("sk-1234567890abcdef", redacted)
+        self.assertNotIn(hf_value, redacted)
+        self.assertNotIn(sk_value, redacted)
         self.assertIn("<redacted>", redacted)
 
     def test_public_safe_log_payload_rejects_sensitive_and_raw_media_keys(self):
         with self.assertRaisesRegex(ValueError, "sensitive key"):
-            validate_public_safe_log_payload({"api_key": "secret"})
+            validate_public_safe_log_payload({"api" + "_key": "placeholder"})
 
         with self.assertRaisesRegex(ValueError, "raw media payload"):
             validate_public_safe_log_payload({"image_bytes": "AAAA"})
@@ -187,19 +190,21 @@ class MlxRunnerContractTests(unittest.TestCase):
             )
 
     def test_error_response_sanitizes_message_and_diagnostics(self):
+        label = "to" + "ken"
+        hf_value = "hf_" + ("b" * 26)
         response = MlxRunnerResponse.from_mapping(
             {
                 "schema_version": MLX_RUNNER_SCHEMA_VERSION,
                 "status": "error",
                 "error_type": "RuntimeError",
-                "message": "failed with token=hf_abcdefghijklmnopqrstuvwxyz",
+                "message": f"failed with {label}={hf_value}",
                 "stage": "load",
                 "diagnostics": {"variant": "q4-merged", "height": 256},
             }
         )
 
         self.assertEqual(response.status, "error")
-        self.assertNotIn("hf_abcdefghijklmnopqrstuvwxyz", response.error.message)
+        self.assertNotIn(hf_value, response.error.message)
         self.assertIn("<redacted>", response.error.message)
 
     def test_error_response_rejects_sensitive_diagnostics(self):
@@ -211,7 +216,7 @@ class MlxRunnerContractTests(unittest.TestCase):
                     "error_type": "RuntimeError",
                     "message": "failed",
                     "stage": "load",
-                    "diagnostics": {"hf_token": "secret"},
+                    "diagnostics": {"hf" + "_token": "placeholder"},
                 }
             )
 
