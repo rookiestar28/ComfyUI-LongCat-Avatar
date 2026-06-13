@@ -24,6 +24,24 @@ class FakeTensor:
             self.device = kwargs["device"]
         return self
 
+    def __add__(self, other):
+        return FakeTensor(device=self.device)
+
+    def __matmul__(self, other):
+        return FakeTensor(device=self.device)
+
+
+class FakeConv3d:
+    def __init__(self, *args, **kwargs):
+        self.to_calls = []
+
+    def to(self, **kwargs):
+        self.to_calls.append(kwargs)
+        return self
+
+    def __call__(self, value):
+        return FakeTensor(device=value.device)
+
 
 class FakeMPSBackend:
     def __init__(self, *, available=True):
@@ -46,11 +64,26 @@ class FakeTorch:
         self.fail_bfloat16 = fail_bfloat16
         self.randn_calls = []
         self.empty_calls = []
+        self.ones_calls = []
+        self.arange_calls = []
+        self.nn = SimpleNamespace(Conv3d=FakeConv3d)
 
     def empty(self, shape, *, device=None, dtype=None):
         if str(device).startswith("mps") and dtype == self.bfloat16 and self.fail_bfloat16:
             raise TypeError("BFloat16 is not supported on MPS")
         self.empty_calls.append((shape, str(device), dtype))
+        return FakeTensor(device=device)
+
+    def ones(self, shape, *, device=None, dtype=None):
+        if str(device).startswith("mps") and dtype == self.bfloat16 and self.fail_bfloat16:
+            raise TypeError("BFloat16 is not supported on MPS")
+        self.ones_calls.append((shape, str(device), dtype))
+        return FakeTensor(device=device or "cpu")
+
+    def arange(self, end, *, device=None, dtype=None):
+        if str(device).startswith("mps") and dtype == self.bfloat16 and self.fail_bfloat16:
+            raise RuntimeError("arange_mps not implemented for BFloat16")
+        self.arange_calls.append((end, str(device), dtype))
         return FakeTensor(device=device)
 
     def randn(self, shape, *, generator=None, device=None, dtype=None):
@@ -72,18 +105,35 @@ class BackendDTypePolicyTests(unittest.TestCase):
         self.assertEqual(policy.math_precision, PRECISION_FP32)
         self.assertEqual(policy.text_encoder_dtype, "bfloat16")
 
-    def test_mps_auto_precision_uses_fp16_models_and_fp32_audio_math(self):
+    def test_mps_auto_precision_prefers_bfloat16_models_when_probe_passes(self):
         fake_torch = FakeTorch()
 
         policy = resolve_backend_dtype_policy("mps", torch_module=fake_torch)
 
         self.assertEqual(policy.backend, "mps")
+        self.assertEqual(policy.text_encoder_precision, PRECISION_BF16)
+        self.assertEqual(policy.audio_encoder_precision, PRECISION_FP32)
+        self.assertEqual(policy.dit_precision, PRECISION_BF16)
+        self.assertEqual(policy.vae_precision, PRECISION_BF16)
+        self.assertEqual(policy.math_precision, PRECISION_FP32)
+        self.assertEqual(policy.text_encoder_dtype, "bfloat16")
+        self.assertIsNotNone(policy.bfloat16_probe)
+        self.assertTrue(policy.bfloat16_probe.supported)
+        self.assertIn("conv3d", policy.bfloat16_probe.detail)
+
+    def test_mps_auto_precision_falls_back_to_fp16_when_bfloat16_probe_fails(self):
+        fake_torch = FakeTorch(fail_bfloat16=True)
+
+        policy = resolve_backend_dtype_policy("mps", torch_module=fake_torch)
+
         self.assertEqual(policy.text_encoder_precision, PRECISION_FP16)
         self.assertEqual(policy.audio_encoder_precision, PRECISION_FP32)
         self.assertEqual(policy.dit_precision, PRECISION_FP16)
         self.assertEqual(policy.vae_precision, PRECISION_FP16)
         self.assertEqual(policy.math_precision, PRECISION_FP32)
-        self.assertEqual(policy.text_encoder_dtype, "float16")
+        self.assertIsNotNone(policy.bfloat16_probe)
+        self.assertFalse(policy.bfloat16_probe.supported)
+        self.assertIn("bf16 probe failed", policy.reason)
 
     def test_mps_bfloat16_request_requires_runtime_probe(self):
         fake_torch = FakeTorch(fail_bfloat16=True)

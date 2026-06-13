@@ -96,6 +96,23 @@ def resolve_backend_dtype_policy(
 
     if backend == "mps":
         if requested == PRECISION_AUTO:
+            probe = probe_bfloat16_support(device, torch_module=torch_module)
+            if probe.supported:
+                return _build_policy(
+                    backend=backend,
+                    requested_precision=requested,
+                    text_encoder_precision=PRECISION_BF16,
+                    audio_encoder_precision=PRECISION_FP32,
+                    dit_precision=PRECISION_BF16,
+                    vae_precision=PRECISION_BF16,
+                    math_precision=PRECISION_FP32,
+                    torch_module=torch_module,
+                    bfloat16_probe=probe,
+                    reason=(
+                        "MPS auto precision uses probed bf16 model tensors to match the official "
+                        "LongCat bf16 runtime, with fp32 audio/math boundaries."
+                    ),
+                )
             return _build_policy(
                 backend=backend,
                 requested_precision=requested,
@@ -105,8 +122,11 @@ def resolve_backend_dtype_policy(
                 vae_precision=PRECISION_FP16,
                 math_precision=PRECISION_FP32,
                 torch_module=torch_module,
-                bfloat16_probe=None,
-                reason="MPS auto precision uses fp16 model tensors with fp32 audio/math boundaries.",
+                bfloat16_probe=probe,
+                reason=(
+                    "MPS auto precision fell back to fp16 model tensors with fp32 audio/math "
+                    f"boundaries because bf16 probe failed: {probe.detail}"
+                ),
             )
         if requested == PRECISION_BF16:
             probe = probe_bfloat16_support(device, torch_module=torch_module)

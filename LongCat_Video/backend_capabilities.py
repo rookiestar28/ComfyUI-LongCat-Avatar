@@ -311,8 +311,62 @@ def probe_bfloat16_support(device: Any, *, torch_module: Any = torch) -> BFloat1
     empty = getattr(torch_module, "empty", None)
     if not callable(empty):
         return BFloat16ProbeResult(backend=backend, supported=False, detail="torch.empty is unavailable")
-    try:
-        empty((1,), device=device, dtype=dtype)
-    except Exception as exc:
-        return BFloat16ProbeResult(backend=backend, supported=False, detail=f"{type(exc).__name__}: {exc}")
-    return BFloat16ProbeResult(backend=backend, supported=True, detail="ok")
+    operations: list[tuple[str, Any]] = [("empty", lambda: empty((1,), device=device, dtype=dtype))]
+    if backend == "mps":
+        operations.extend(_mps_bfloat16_probe_operations(device, dtype, torch_module=torch_module))
+
+    passed: list[str] = []
+    for operation, probe_fn in operations:
+        try:
+            probe_fn()
+        except Exception as exc:
+            passed_detail = ", ".join(passed) if passed else "none"
+            return BFloat16ProbeResult(
+                backend=backend,
+                supported=False,
+                detail=f"{operation} failed after {passed_detail}: {type(exc).__name__}: {exc}",
+            )
+        passed.append(operation)
+    return BFloat16ProbeResult(backend=backend, supported=True, detail=f"ok: {', '.join(passed)}")
+
+
+def _mps_bfloat16_probe_operations(device: Any, dtype: Any, *, torch_module: Any) -> list[tuple[str, Any]]:
+    ones = getattr(torch_module, "ones", None)
+    arange = getattr(torch_module, "arange", None)
+    nn_module = getattr(torch_module, "nn", None)
+    conv3d_cls = getattr(nn_module, "Conv3d", None)
+    if not callable(ones):
+        return [("ones_api", lambda: (_ for _ in ()).throw(RuntimeError("torch.ones is unavailable")))]
+    if not callable(arange):
+        return [("arange_api", lambda: (_ for _ in ()).throw(RuntimeError("torch.arange is unavailable")))]
+    if conv3d_cls is None:
+        return [("conv3d_api", lambda: (_ for _ in ()).throw(RuntimeError("torch.nn.Conv3d is unavailable")))]
+
+    def cpu_to_device() -> Any:
+        return ones((2, 2), dtype=dtype).to(device=device)
+
+    def add() -> Any:
+        lhs = ones((2, 2), device=device, dtype=dtype)
+        rhs = ones((2, 2), device=device, dtype=dtype)
+        return lhs + rhs
+
+    def matmul() -> Any:
+        lhs = ones((4, 4), device=device, dtype=dtype)
+        rhs = ones((4, 4), device=device, dtype=dtype)
+        return lhs @ rhs
+
+    def arange_bfloat16() -> Any:
+        return arange(8, device=device, dtype=dtype)
+
+    def conv3d() -> Any:
+        conv = conv3d_cls(1, 1, kernel_size=1).to(device=device, dtype=dtype)
+        sample = ones((1, 1, 1, 2, 2), device=device, dtype=dtype)
+        return conv(sample)
+
+    return [
+        ("cpu_to_device", cpu_to_device),
+        ("add", add),
+        ("matmul", matmul),
+        ("arange", arange_bfloat16),
+        ("conv3d", conv3d),
+    ]

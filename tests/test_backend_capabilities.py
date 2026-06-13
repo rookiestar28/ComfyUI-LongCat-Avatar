@@ -73,6 +73,36 @@ class FakeMPSOps:
         return 6_000_000_000
 
 
+class FakeTensor:
+    def __init__(self, *, device):
+        self.device = device
+        self.to_calls = []
+
+    def to(self, **kwargs):
+        self.to_calls.append(kwargs)
+        if "device" in kwargs:
+            self.device = kwargs["device"]
+        return self
+
+    def __add__(self, other):
+        return FakeTensor(device=self.device)
+
+    def __matmul__(self, other):
+        return FakeTensor(device=self.device)
+
+
+class FakeConv3d:
+    def __init__(self, *args, **kwargs):
+        self.to_calls = []
+
+    def to(self, **kwargs):
+        self.to_calls.append(kwargs)
+        return self
+
+    def __call__(self, value):
+        return FakeTensor(device=value.device)
+
+
 class FakeTorch:
     bfloat16 = "bfloat16"
 
@@ -82,12 +112,27 @@ class FakeTorch:
         self.mps = FakeMPSOps() if with_mps_ops else types.SimpleNamespace()
         self.fail_mps_bfloat16 = fail_mps_bfloat16
         self.empty_calls = []
+        self.ones_calls = []
+        self.arange_calls = []
+        self.nn = types.SimpleNamespace(Conv3d=FakeConv3d)
 
     def empty(self, shape, *, device=None, dtype=None):
         if str(device).startswith("mps") and self.fail_mps_bfloat16:
             raise TypeError("BFloat16 is not supported on MPS")
         self.empty_calls.append((shape, str(device), dtype))
-        return object()
+        return FakeTensor(device=device)
+
+    def ones(self, shape, *, device=None, dtype=None):
+        if str(device).startswith("mps") and self.fail_mps_bfloat16:
+            raise TypeError("BFloat16 is not supported on MPS")
+        self.ones_calls.append((shape, str(device), dtype))
+        return FakeTensor(device=device or "cpu")
+
+    def arange(self, end, *, device=None, dtype=None):
+        if str(device).startswith("mps") and self.fail_mps_bfloat16:
+            raise RuntimeError("arange_mps not implemented for BFloat16")
+        self.arange_calls.append((end, str(device), dtype))
+        return FakeTensor(device=device)
 
 
 class FakeMovable:
@@ -164,6 +209,18 @@ class BackendCapabilitiesTests(unittest.TestCase):
 
         self.assertFalse(result.supported)
         self.assertIn("BFloat16 is not supported on MPS", result.detail)
+
+    def test_mps_bfloat16_probe_covers_core_operation_matrix(self):
+        fake_torch = FakeTorch()
+
+        result = probe_bfloat16_support("mps", torch_module=fake_torch)
+
+        self.assertTrue(result.supported)
+        for operation in ("empty", "cpu_to_device", "add", "matmul", "arange", "conv3d"):
+            self.assertIn(operation, result.detail)
+        self.assertTrue(fake_torch.empty_calls)
+        self.assertTrue(fake_torch.ones_calls)
+        self.assertTrue(fake_torch.arange_calls)
 
     def test_cuda_memory_fields_preserve_existing_debug_names(self):
         fake_torch = FakeTorch()
