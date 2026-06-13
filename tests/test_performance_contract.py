@@ -13,6 +13,9 @@ from LongCat_Video.performance_contract import (
     normalize_block_num,
     normalize_device_name,
     normalize_offload_device,
+    normalize_runtime_backend,
+    require_supported_runtime_device,
+    resolve_vae_offload_device,
     validate_precision_runtime_request,
     require_cuda_device,
 )
@@ -47,12 +50,22 @@ class PerformanceContractTests(unittest.TestCase):
         self.assertEqual(normalize_device_name("cuda:0"), "cuda:0")
         self.assertEqual(normalize_device_name(SimpleNamespace(type="cuda", index=1)), "cuda:1")
         self.assertEqual(normalize_device_name(SimpleNamespace(type="cuda", index=None)), "cuda")
+        self.assertEqual(normalize_device_name(SimpleNamespace(type="mps", index=None)), "mps")
+        self.assertEqual(normalize_runtime_backend("cuda:0"), "cuda")
+        self.assertEqual(normalize_runtime_backend("mps"), "mps")
 
     def test_rejects_non_cuda_devices_early(self):
         for value in ("cpu", "mps", SimpleNamespace(type="mps", index=None)):
             with self.subTest(value=value):
                 with self.assertRaisesRegex(RuntimeError, "requires a CUDA device"):
                     require_cuda_device(value)
+
+    def test_supported_runtime_device_accepts_cuda_and_mps_but_rejects_cpu(self):
+        self.assertEqual(require_supported_runtime_device("cuda:0"), "cuda:0")
+        self.assertEqual(require_supported_runtime_device("mps"), "mps")
+
+        with self.assertRaisesRegex(RuntimeError, "requires a CUDA or MPS device"):
+            require_supported_runtime_device("cpu")
 
     def test_normalizes_block_bounds(self):
         self.assertEqual(normalize_block_num("0"), 0)
@@ -69,6 +82,9 @@ class PerformanceContractTests(unittest.TestCase):
         self.assertEqual(MPS_VISIBLE_VAE_OFFLOAD_DEVICES, ("cpu",))
         self.assertEqual(normalize_offload_device("cpu"), "cpu")
         self.assertEqual(normalize_offload_device("CUDA"), "cuda")
+        self.assertEqual(resolve_vae_offload_device("cuda", "cuda:0"), "cuda")
+        self.assertEqual(resolve_vae_offload_device("cuda", "mps"), "cpu")
+        self.assertEqual(resolve_vae_offload_device("cpu", "mps"), "cpu")
         with self.assertRaisesRegex(ValueError, "offload_device"):
             normalize_offload_device("mps")
 
@@ -110,6 +126,33 @@ class PerformanceContractTests(unittest.TestCase):
         self.assertTrue(model.dit.lora_runtime_offload)
         self.assertEqual(model.calls, [("vae_to", "cuda:0")])
         self.assertEqual(empty_cache_calls, [])
+
+    def test_mps_runtime_plan_disables_cuda_streaming_and_uses_eager_cleanup(self):
+        plan = build_runtime_plan("mps", 3, "cuda")
+        model = FakeModel()
+        empty_cache_calls = []
+
+        apply_runtime_plan(model, plan)
+
+        self.assertEqual(plan.device, "mps")
+        self.assertEqual(plan.block_num, 0)
+        self.assertIsNone(plan.streaming_prefetch_count)
+        self.assertTrue(plan.move_dit_to_device)
+        self.assertTrue(plan.offload_dit_after_generate)
+        self.assertEqual(plan.vae_offload_device, "cpu")
+        self.assertEqual(model.streaming_prefetch_count, None)
+        self.assertEqual(model.vae_offload_device, "cpu")
+        self.assertFalse(model.dit.lora_runtime_offload)
+
+        cleanup_runtime_plan(model, plan, empty_cache=lambda: empty_cache_calls.append("empty"))
+
+        self.assertEqual(model.calls, [("vae_to", "mps"), ("to", "mps"), ("to", "cpu")])
+        self.assertTrue(model.dit.lora_runtime_offload)
+        self.assertEqual(empty_cache_calls, ["empty"])
+
+    def test_runtime_plan_rejects_cpu_before_apply(self):
+        with self.assertRaisesRegex(RuntimeError, "CPU is not supported"):
+            build_runtime_plan("cpu", 1)
 
     def test_avatar_lora_forward_keeps_full_load_resident_guard(self):
         source = Path("LongCat_Video/longcat_video/modules/avatar/longcat_video_dit_avatar.py").read_text(

@@ -72,6 +72,21 @@ def require_cuda_device(device: Any) -> str:
     return normalized
 
 
+def normalize_runtime_backend(device: Any) -> str:
+    return normalize_device_name(device).split(":", 1)[0]
+
+
+def require_supported_runtime_device(device: Any) -> str:
+    normalized = normalize_device_name(device)
+    backend = normalize_runtime_backend(normalized)
+    if backend in {"cuda", "mps"}:
+        return normalized
+    raise RuntimeError(
+        "LongCat Avatar inference requires a CUDA or MPS device; "
+        f"current device is '{normalized}'. CPU is not supported."
+    )
+
+
 def normalize_block_num(block_num: Any) -> int:
     try:
         normalized = int(block_num)
@@ -91,10 +106,33 @@ def normalize_offload_device(offload_device: Any) -> str:
     return normalized
 
 
+def resolve_vae_offload_device(offload_device: Any, runtime_device: Any) -> str:
+    requested = normalize_offload_device(offload_device)
+    if requested == "cpu":
+        return "cpu"
+    if normalize_runtime_backend(runtime_device) == "cuda":
+        return "cuda"
+
+    # IMPORTANT: stale MPS workflows may still carry offload_device=cuda.
+    # CUDA here means "keep VAE resident on the active CUDA device"; on MPS it
+    # must not preserve the CUDA label because downstream offload logic treats
+    # it as a GPU-resident CUDA memory mode.
+    return "cpu"
+
+
 def build_runtime_plan(device: Any, block_num: Any, offload_device: Any = "cpu") -> AvatarRuntimePlan:
-    normalized_device = require_cuda_device(device)
+    normalized_device = require_supported_runtime_device(device)
     normalized_block = normalize_block_num(block_num)
-    normalized_offload_device = normalize_offload_device(offload_device)
+    normalized_offload_device = resolve_vae_offload_device(offload_device, normalized_device)
+    if normalize_runtime_backend(normalized_device) == "mps":
+        return AvatarRuntimePlan(
+            device=normalized_device,
+            block_num=0,
+            streaming_prefetch_count=None,
+            move_dit_to_device=True,
+            offload_dit_after_generate=True,
+            vae_offload_device=normalized_offload_device,
+        )
     streaming_prefetch_count = normalized_block if normalized_block > 0 else None
     eager_full_load = normalized_block == 0
     return AvatarRuntimePlan(
@@ -168,7 +206,7 @@ def build_mps_feasibility_report(
         recommended_dtype=str(recommended_dtype),
         attention_backend=str(attention_backend),
         cuda_only_assumptions=(
-            "Sampler runtime currently calls require_cuda_device() before building an AvatarRuntimePlan.",
+            "MPS Sampler runtime plan forces non-streaming eager load; CUDA layer streaming remains unavailable.",
             "Embedded Avatar DiT blocks use torch.amp.autocast(device_type='cuda').",
             "Layer streaming and debug paths use torch.cuda streams, synchronization, and memory APIs.",
             "Optional FlashAttention, xFormers, SageAttention, and Triton block-sparse paths are CUDA-oriented.",
