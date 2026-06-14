@@ -1,6 +1,6 @@
 import unittest
 
-from LongCat_Video.mlx_smoke_gate import evaluate_mlx_smoke_gate
+from LongCat_Video.mlx_smoke_gate import MlxSmokeEvidence, evaluate_mlx_smoke_gate
 
 
 class MlxSmokeGateTests(unittest.TestCase):
@@ -32,6 +32,26 @@ class MlxSmokeGateTests(unittest.TestCase):
         self.assertIn("MLX external runner", decision.public_support_label)
         self.assertNotIn("PyTorch MPS", decision.public_support_label)
         self.assertEqual(decision.legacy_mps_status, "blocked")
+
+    def test_evidence_accepts_content_free_memory_probe_fields(self):
+        evidence = MlxSmokeEvidence.from_mapping(
+            self.evidence(
+                memory_probe_source="host_sysctl",
+                memory_pressure={"page_size_bytes": 16384, "swapouts": 0},
+            )
+        )
+
+        self.assertEqual(evidence.memory_probe_source, "host_sysctl")
+        self.assertEqual(evidence.memory_pressure["page_size_bytes"], 16384)
+
+    def test_evidence_rejects_sensitive_memory_pressure_keys(self):
+        with self.assertRaises(ValueError):
+            MlxSmokeEvidence.from_mapping(
+                self.evidence(
+                    memory_probe_source="host_sysctl",
+                    memory_pressure={"api_key_pressure": 1},
+                )
+            )
 
     def test_rejects_480p_before_first_smoke_gate(self):
         decision = evaluate_mlx_smoke_gate(self.evidence(height=480, width=832, num_frames=93))

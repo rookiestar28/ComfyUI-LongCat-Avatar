@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import subprocess
 from typing import Any
 
@@ -24,6 +25,26 @@ MLX_VARIANT_MIN_UNIFIED_MEMORY_GB = {
 }
 _EXPECTED_QUANTIZATION_BITS = {"q4-merged": 4, "q8-merged": 8}
 _BYTES_PER_GIB = 1024**3
+_MEMORY_PROBE_UNAVAILABLE = "unavailable"
+_VM_STAT_LABELS = {
+    "Pages free": "pages_free",
+    "Pages active": "pages_active",
+    "Pages inactive": "pages_inactive",
+    "Pages speculative": "pages_speculative",
+    "Pages throttled": "pages_throttled",
+    "Pages wired down": "pages_wired_down",
+    "Pages purgeable": "pages_purgeable",
+    "File-backed pages": "file_backed_pages",
+    "Anonymous pages": "anonymous_pages",
+    "Pages stored in compressor": "pages_stored_in_compressor",
+    "Pages occupied by compressor": "pages_occupied_by_compressor",
+    "Decompressions": "decompressions",
+    "Compressions": "compressions",
+    "Pageins": "pageins",
+    "Pageouts": "pageouts",
+    "Swapins": "swapins",
+    "Swapouts": "swapouts",
+}
 
 
 @dataclass(frozen=True)
@@ -31,6 +52,14 @@ class MlxRunnerDependencyRequirement:
     import_name: str
     package_name: str
     purpose: str
+
+
+@dataclass(frozen=True)
+class MlxMacMemoryProbe:
+    unified_memory_bytes: int | None
+    memory_probe_source: str
+    memory_pressure: Mapping[str, int] = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
 
 
 MLX_RUNNER_DEPENDENCIES = (
@@ -82,8 +111,10 @@ class MlxRunnerEnvironmentReport:
     is_macos: bool
     is_arm64: bool
     unified_memory_bytes: int | None
+    memory_probe_source: str
     dependency_reports: tuple[MlxRunnerDependencyReport, ...]
     support_status: str
+    memory_pressure: Mapping[str, int] = field(default_factory=dict)
     issues: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
 
@@ -144,6 +175,7 @@ class MlxPreflightReport:
 
 
 RunnerProbe = Callable[[str, str, float], str]
+MemoryCommandRunner = Callable[[list[str], float], subprocess.CompletedProcess[str]]
 
 
 def _safe_name(path: str | os.PathLike[str] | None) -> str:
@@ -167,6 +199,108 @@ def _coerce_int_or_none(value: Any) -> int | None:
 
 def _normalize_machine(value: str) -> str:
     return value.strip().lower().replace("-", "_")
+
+
+def _default_memory_command(command: list[str], timeout_seconds: float) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=timeout_seconds,
+    )
+
+
+def parse_macos_vm_stat(output: str) -> Mapping[str, int]:
+    values: dict[str, int] = {}
+    page_size_match = re.search(r"page size of\s+(\d+)\s+bytes", output)
+    if page_size_match:
+        values["page_size_bytes"] = int(page_size_match.group(1))
+    for line in output.splitlines():
+        if ":" not in line:
+            continue
+        raw_label, raw_value = line.split(":", 1)
+        label = raw_label.strip().strip('"')
+        key = _VM_STAT_LABELS.get(label)
+        if key is None:
+            continue
+        value_match = re.search(r"\d+", raw_value)
+        if value_match:
+            values[key] = int(value_match.group(0))
+    return values
+
+
+def _coerce_memory_pressure(value: Any) -> Mapping[str, int]:
+    if not isinstance(value, Mapping):
+        return {}
+    pressure: dict[str, int] = {}
+    for key, item in value.items():
+        try:
+            normalized = int(item)
+        except (TypeError, ValueError):
+            continue
+        if normalized >= 0:
+            pressure[sanitize_log_text(key)] = normalized
+    return pressure
+
+
+def probe_host_macos_memory(
+    *,
+    platform_system: str | None = None,
+    platform_machine: str | None = None,
+    run_command: MemoryCommandRunner | None = None,
+    timeout_seconds: float = 5.0,
+    source_label: str = "host_sysctl",
+    include_pressure: bool = True,
+) -> MlxMacMemoryProbe:
+    system = platform_system if platform_system is not None else platform.system()
+    machine = platform_machine if platform_machine is not None else platform.machine()
+    warnings: list[str] = []
+    if system != "Darwin" or _normalize_machine(machine) not in {"arm64", "aarch64"}:
+        warnings.append("macOS unified memory probe skipped on non-Darwin/arm64 host.")
+        return MlxMacMemoryProbe(
+            unified_memory_bytes=None,
+            memory_probe_source=_MEMORY_PROBE_UNAVAILABLE,
+            warnings=tuple(warnings),
+        )
+
+    runner = run_command or _default_memory_command
+    unified_memory_bytes: int | None = None
+    source = _MEMORY_PROBE_UNAVAILABLE
+    try:
+        completed = runner(["sysctl", "-n", "hw.memsize"], timeout_seconds)
+    except Exception as exc:
+        warnings.append(f"hw.memsize probe failed: {exc.__class__.__name__}.")
+    else:
+        if completed.returncode == 0:
+            detected = _coerce_int_or_none(completed.stdout.strip())
+            if detected is not None and detected > 0:
+                unified_memory_bytes = detected
+                source = sanitize_log_text(source_label)
+            else:
+                warnings.append("hw.memsize probe returned malformed output.")
+        else:
+            warnings.append("hw.memsize probe command failed.")
+
+    memory_pressure: Mapping[str, int] = {}
+    if include_pressure:
+        try:
+            completed = runner(["vm_stat"], timeout_seconds)
+        except Exception as exc:
+            warnings.append(f"vm_stat probe failed: {exc.__class__.__name__}.")
+        else:
+            if completed.returncode == 0:
+                memory_pressure = parse_macos_vm_stat(completed.stdout)
+            else:
+                warnings.append("vm_stat probe command failed.")
+
+    return MlxMacMemoryProbe(
+        unified_memory_bytes=unified_memory_bytes,
+        memory_probe_source=source,
+        memory_pressure=memory_pressure,
+        warnings=tuple(warnings),
+    )
 
 
 def classify_mlx_generation_support(
@@ -253,8 +387,16 @@ def build_mlx_environment_report(
         issues.append(f"Runner Python does not exist or is not a file: {_safe_name(runner_path)}.")
 
     detected_memory = _coerce_int_or_none(probe_data.get("unified_memory_bytes"))
+    memory_probe_source = sanitize_log_text(probe_data.get("memory_probe_source") or _MEMORY_PROBE_UNAVAILABLE)
+    memory_pressure = _coerce_memory_pressure(probe_data.get("memory_pressure"))
+    probe_warnings = probe_data.get("memory_probe_warnings") or ()
+    if isinstance(probe_warnings, (list, tuple)):
+        warnings.extend(sanitize_log_text(item) for item in probe_warnings)
+    if detected_memory is not None and memory_probe_source == _MEMORY_PROBE_UNAVAILABLE:
+        memory_probe_source = "runner_probe_sysctl"
     if unified_memory_bytes is not None:
         detected_memory = unified_memory_bytes
+        memory_probe_source = "override"
     platform_system = str(probe_data.get("platform_system") or "")
     platform_machine = str(probe_data.get("platform_machine") or "")
     support_status, support_issues, support_warnings = classify_mlx_generation_support(
@@ -276,8 +418,10 @@ def build_mlx_environment_report(
         is_macos=platform_system == "Darwin",
         is_arm64=_normalize_machine(platform_machine) in {"arm64", "aarch64"},
         unified_memory_bytes=detected_memory,
+        memory_probe_source=memory_probe_source,
         dependency_reports=tuple(dependency_reports),
         support_status=support_status,
+        memory_pressure=memory_pressure,
         issues=tuple(issues),
         warnings=tuple(warnings),
     )
@@ -294,15 +438,112 @@ def _build_runner_probe_script() -> str:
     ]
     # CRITICAL: keep runner-only dependency imports inside this subprocess
     # script; importing mlx in this module breaks CI and default ComfyUI envs.
-    return f"""
+    script = r"""
 import importlib
 import importlib.metadata
 import json
 import platform
+import re
+import subprocess
 import sys
 
-requirements = {requirements!r}
-dependencies = {{}}
+requirements = __REQUIREMENTS__
+VM_STAT_LABELS = {
+    "Pages free": "pages_free",
+    "Pages active": "pages_active",
+    "Pages inactive": "pages_inactive",
+    "Pages speculative": "pages_speculative",
+    "Pages throttled": "pages_throttled",
+    "Pages wired down": "pages_wired_down",
+    "Pages purgeable": "pages_purgeable",
+    "File-backed pages": "file_backed_pages",
+    "Anonymous pages": "anonymous_pages",
+    "Pages stored in compressor": "pages_stored_in_compressor",
+    "Pages occupied by compressor": "pages_occupied_by_compressor",
+    "Decompressions": "decompressions",
+    "Compressions": "compressions",
+    "Pageins": "pageins",
+    "Pageouts": "pageouts",
+    "Swapins": "swapins",
+    "Swapouts": "swapouts",
+}
+
+
+def normalize_machine(value):
+    return str(value).strip().lower().replace("-", "_")
+
+
+def parse_vm_stat(output):
+    values = {}
+    page_size_match = re.search(r"page size of\s+(\d+)\s+bytes", output)
+    if page_size_match:
+        values["page_size_bytes"] = int(page_size_match.group(1))
+    for line in output.splitlines():
+        if ":" not in line:
+            continue
+        raw_label, raw_value = line.split(":", 1)
+        label = raw_label.strip().strip('"')
+        key = VM_STAT_LABELS.get(label)
+        if key is None:
+            continue
+        value_match = re.search(r"\d+", raw_value)
+        if value_match:
+            values[key] = int(value_match.group(0))
+    return values
+
+
+def read_macos_memory():
+    warnings = []
+    if platform.system() != "Darwin" or normalize_machine(platform.machine()) not in {"arm64", "aarch64"}:
+        return None, "unavailable", {}, warnings
+    memory_bytes = None
+    source = "unavailable"
+    try:
+        completed = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
+        if completed.returncode == 0:
+            try:
+                parsed = int(completed.stdout.strip())
+            except (TypeError, ValueError):
+                warnings.append("hw.memsize probe returned malformed output.")
+            else:
+                if parsed > 0:
+                    memory_bytes = parsed
+                    source = "runner_probe_sysctl"
+                else:
+                    warnings.append("hw.memsize probe returned non-positive output.")
+        else:
+            warnings.append("hw.memsize probe command failed.")
+    except Exception as exc:
+        warnings.append(f"hw.memsize probe failed: {exc.__class__.__name__}.")
+
+    pressure = {}
+    try:
+        completed = subprocess.run(
+            ["vm_stat"],
+            check=False,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=5,
+        )
+        if completed.returncode == 0:
+            pressure = parse_vm_stat(completed.stdout)
+        else:
+            warnings.append("vm_stat probe command failed.")
+    except Exception as exc:
+        warnings.append(f"vm_stat probe failed: {exc.__class__.__name__}.")
+    return memory_bytes, source, pressure, warnings
+
+
+unified_memory_bytes, memory_probe_source, memory_pressure, memory_probe_warnings = read_macos_memory()
+dependencies = {}
 for requirement in requirements:
     import_name = requirement["import_name"]
     package_name = requirement["package_name"]
@@ -322,17 +563,22 @@ for requirement in requirements:
             "available": False,
             "version": "",
             "error": exc.__class__.__name__,
-        }}
+        }
 
-print(json.dumps({{
+print(json.dumps({
     "executable_exists": True,
     "python_executable": sys.executable,
     "python_version": platform.python_version(),
     "platform_system": platform.system(),
     "platform_machine": platform.machine(),
+    "unified_memory_bytes": unified_memory_bytes,
+    "memory_probe_source": memory_probe_source,
+    "memory_pressure": memory_pressure,
+    "memory_probe_warnings": memory_probe_warnings,
     "dependencies": dependencies,
-}}, sort_keys=True))
+}, sort_keys=True))
 """
+    return script.replace("__REQUIREMENTS__", repr(requirements))
 
 
 def _run_probe_subprocess(runner_python: str, script: str, timeout_seconds: float) -> str:
@@ -596,6 +842,7 @@ __all__ = [
     "MLX_VARIANT_DIRNAMES",
     "MLX_VARIANT_MIN_UNIFIED_MEMORY_GB",
     "MlxPreflightReport",
+    "MlxMacMemoryProbe",
     "MlxRunnerDependencyReport",
     "MlxRunnerDependencyRequirement",
     "MlxRunnerEnvironmentReport",
@@ -603,6 +850,8 @@ __all__ = [
     "MlxWeightValidationReport",
     "build_mlx_environment_report",
     "classify_mlx_generation_support",
+    "parse_macos_vm_stat",
+    "probe_host_macos_memory",
     "probe_mlx_runner_environment",
     "validate_mlx_preflight",
     "validate_mlx_weights_root",

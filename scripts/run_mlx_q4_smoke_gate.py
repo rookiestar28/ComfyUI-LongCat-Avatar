@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import json
 import os
 import platform
 import shutil
-import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -16,6 +16,7 @@ if __package__ in {None, ""}:
 
 from LongCat_Video.mlx_bridge import MlxBridgeResult, run_mlx_bridge_job
 from LongCat_Video.mlx_runner_contract import load_mlx_runner_response_json, sanitize_log_text
+from LongCat_Video.mlx_runner_validation import probe_host_macos_memory
 from LongCat_Video.mlx_smoke_gate import (
     MLX_SMOKE_GATE_SCHEMA_VERSION,
     evaluate_mlx_smoke_gate,
@@ -37,23 +38,40 @@ def _copy_file_writer(source_path: str | os.PathLike[str]):
     return writer
 
 
-def _host_unified_memory_gb(override: float | None = None) -> float:
+def _host_memory_probe(override: float | None = None) -> dict[str, Any]:
     if override is not None:
-        return float(override)
-    if platform.system() != "Darwin":
-        return 0.0
-    try:
-        completed = subprocess.run(
-            ["sysctl", "-n", "hw.memsize"],
-            check=True,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
-        )
-        return int(completed.stdout.strip()) / 1024**3
-    except Exception:
-        return 0.0
+        return {
+            "unified_memory_gb": float(override),
+            "memory_probe_source": "override",
+            "memory_pressure": {},
+        }
+    probe = probe_host_macos_memory()
+    unified_memory_gb = float(probe.unified_memory_bytes) / 1024**3 if probe.unified_memory_bytes else 0.0
+    return {
+        "unified_memory_gb": unified_memory_gb,
+        "memory_probe_source": probe.memory_probe_source,
+        "memory_pressure": dict(probe.memory_pressure),
+    }
+
+
+def _normalize_memory_probe(value: Any, override: float | None) -> tuple[float, str, dict[str, int]]:
+    if not isinstance(value, Mapping):
+        source = "override" if override is not None else "unavailable"
+        return float(value), source, {}
+    unified_memory_gb = float(value.get("unified_memory_gb") or 0.0)
+    source = sanitize_log_text(value.get("memory_probe_source") or ("override" if override is not None else "unavailable"))
+    raw_pressure = value.get("memory_pressure") or {}
+    if not isinstance(raw_pressure, Mapping):
+        return unified_memory_gb, source, {}
+    memory_pressure: dict[str, int] = {}
+    for key, item in raw_pressure.items():
+        try:
+            normalized = int(item)
+        except (TypeError, ValueError):
+            continue
+        if normalized >= 0:
+            memory_pressure[sanitize_log_text(key)] = normalized
+    return unified_memory_gb, source, memory_pressure
 
 
 def _response_fields(response_path: str, output_dir: str) -> tuple[bool, str, dict[str, float]]:
@@ -89,7 +107,7 @@ def run_smoke_gate(
     args: argparse.Namespace,
     *,
     bridge_runner=run_mlx_bridge_job,
-    memory_reader=_host_unified_memory_gb,
+    memory_reader=_host_memory_probe,
     host_reader=lambda: (platform.system(), platform.machine()),
 ) -> int:
     result: MlxBridgeResult | None = None
@@ -135,6 +153,10 @@ def run_smoke_gate(
 
     artifact_present, artifact_kind = _artifact_fields(result)
     host_system, host_machine = host_reader()
+    unified_memory_gb, memory_probe_source, memory_pressure = _normalize_memory_probe(
+        memory_reader(args.unified_memory_gb),
+        args.unified_memory_gb,
+    )
     evidence = {
         "schema_version": MLX_SMOKE_GATE_SCHEMA_VERSION,
         "status": "passed" if response_valid and response_status == "ok" and artifact_present else "failed",
@@ -144,7 +166,9 @@ def run_smoke_gate(
         "num_frames": 29,
         "host_system": str(host_system),
         "host_machine": str(host_machine),
-        "unified_memory_gb": memory_reader(args.unified_memory_gb),
+        "unified_memory_gb": unified_memory_gb,
+        "memory_probe_source": memory_probe_source,
+        "memory_pressure": memory_pressure,
         "response_json_valid": response_valid,
         "response_status": response_status,
         "artifact_present": artifact_present,

@@ -99,8 +99,51 @@ class MlxQ4SmokeScriptTests(unittest.TestCase):
         self.assertEqual(evidence["status"], "passed")
         self.assertEqual(evidence["variant"], "q4-merged")
         self.assertEqual(evidence["artifact_kind"], "frames")
+        self.assertEqual(evidence["memory_probe_source"], "override")
+        self.assertEqual(evidence["memory_pressure"], {})
         self.assertNotIn(str(self.image), json.dumps(evidence))
         self.assertNotIn("private prompt", json.dumps(evidence))
+
+    def test_smoke_script_records_host_memory_probe_snapshot(self):
+        def bridge_runner(**kwargs):
+            job_dir = self.output_root / "job"
+            job_dir.mkdir()
+            frames_path = job_dir / "smoke.npy"
+            response_path = job_dir / "response.json"
+            frames_path.write_bytes(b"frames")
+            dump_mlx_runner_response_json(
+                MlxRunnerResponse(
+                    schema_version=MLX_RUNNER_SCHEMA_VERSION,
+                    status="ok",
+                    variant="q4-merged",
+                    frames_path=str(frames_path),
+                    timings={"inference_seconds": 1.0},
+                ),
+                response_path,
+            )
+            return self.module.MlxBridgeResult(
+                video_path="",
+                frames_path=str(frames_path),
+                response_path=str(response_path),
+                request_path=str(job_dir / "request.json"),
+                job_dir=str(job_dir),
+            )
+
+        code = self.module.run_smoke_gate(
+            self.args(unified_memory_gb=None),
+            bridge_runner=bridge_runner,
+            memory_reader=lambda _: {
+                "unified_memory_gb": 32,
+                "memory_probe_source": "host_sysctl",
+                "memory_pressure": {"swapouts": 7, "ignored": -1},
+            },
+            host_reader=lambda: ("Darwin", "arm64"),
+        )
+
+        self.assertEqual(code, 0)
+        evidence = json.loads(self.evidence.read_text(encoding="utf-8"))
+        self.assertEqual(evidence["memory_probe_source"], "host_sysctl")
+        self.assertEqual(evidence["memory_pressure"], {"swapouts": 7})
 
     def test_smoke_script_records_failed_evidence_on_bridge_error(self):
         def bridge_runner(**kwargs):

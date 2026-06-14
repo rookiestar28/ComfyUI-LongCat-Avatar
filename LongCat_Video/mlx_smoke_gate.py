@@ -26,6 +26,8 @@ MLX_SMOKE_GATE_ALLOWED_KEYS = {
     "response_status",
     "artifact_present",
     "artifact_kind",
+    "memory_probe_source",
+    "memory_pressure",
     "timings",
     "notes",
 }
@@ -46,6 +48,8 @@ class MlxSmokeEvidence:
     response_status: str
     artifact_present: bool
     artifact_kind: str
+    memory_probe_source: str = "unavailable"
+    memory_pressure: Mapping[str, int] = field(default_factory=dict)
     timings: Mapping[str, float] = field(default_factory=dict)
     notes: tuple[str, ...] = ()
 
@@ -56,7 +60,8 @@ class MlxSmokeEvidence:
         unknown = sorted(set(mapping) - MLX_SMOKE_GATE_ALLOWED_KEYS)
         if unknown:
             raise ValueError(f"MLX smoke evidence contains unsupported keys: {', '.join(unknown)}")
-        missing = sorted(key for key in MLX_SMOKE_GATE_ALLOWED_KEYS if key not in mapping and key not in {"notes"})
+        optional_keys = {"memory_probe_source", "memory_pressure", "notes"}
+        missing = sorted(key for key in MLX_SMOKE_GATE_ALLOWED_KEYS if key not in mapping and key not in optional_keys)
         if missing:
             raise KeyError(f"MLX smoke evidence missing required keys: {', '.join(missing)}")
         timings = mapping.get("timings") or {}
@@ -72,6 +77,19 @@ class MlxSmokeEvidence:
             if normalized_value < 0:
                 raise ValueError(f"MLX smoke timing '{key}' must be non-negative.")
             normalized_timings[str(key)] = normalized_value
+        memory_pressure = mapping.get("memory_pressure") or {}
+        if not isinstance(memory_pressure, Mapping):
+            raise TypeError("MLX smoke evidence memory_pressure must be a mapping.")
+        validate_public_safe_log_payload(memory_pressure)
+        normalized_pressure: dict[str, int] = {}
+        for key, value in memory_pressure.items():
+            try:
+                normalized_value = int(value)
+            except (TypeError, ValueError) as exc:
+                raise TypeError(f"MLX smoke memory_pressure '{key}' must be numeric.") from exc
+            if normalized_value < 0:
+                raise ValueError(f"MLX smoke memory_pressure '{key}' must be non-negative.")
+            normalized_pressure[str(key)] = normalized_value
         notes = tuple(sanitize_log_text(item) for item in (mapping.get("notes") or ()))
         return cls(
             schema_version=int(mapping["schema_version"]),
@@ -87,6 +105,8 @@ class MlxSmokeEvidence:
             response_status=str(mapping["response_status"]),
             artifact_present=bool(mapping["artifact_present"]),
             artifact_kind=str(mapping["artifact_kind"]),
+            memory_probe_source=sanitize_log_text(mapping.get("memory_probe_source") or "unavailable"),
+            memory_pressure=normalized_pressure,
             timings=normalized_timings,
             notes=notes,
         )
