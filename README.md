@@ -11,8 +11,13 @@ This repository adapts the official Avatar 1.5 pipeline to ComfyUI. It focuses o
   <video src="https://github.com/user-attachments/assets/dbad0a81-c961-4cef-9a18-09377de2397a" width="900"></video>
 </div>
 
+## Last Update
+
+A macOS inference branch, `macOS-MLX`, is now available for Apple Silicon MLX testing. If you have a suitable Mac, please try it and share feedback through GitHub issues or pull requests.
+
 ## Table of Contents
 
+- [Last Update](#last-update)
 - [Feature Status](#feature-status)
 - [Installation](#installation)
 - [Model Files](#model-files)
