@@ -2,10 +2,12 @@ import json
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
-from LongCat_Video.mlx_bridge import MlxBridgeSubprocessResult, run_mlx_bridge_job
+from LongCat_Video.mlx_bridge import MlxBridgeSubprocessResult, _run_subprocess, run_mlx_bridge_job
 from LongCat_Video.mlx_runner_cli import MlxRunnerOptions, run_mlx_runner
 from LongCat_Video.mlx_runner_contract import MLX_RUNNER_SCHEMA_VERSION, dump_mlx_runner_response_json, MlxRunnerResponse
 from LongCat_Video.mlx_runner_validation import MLX_VARIANT_DIRNAMES
@@ -106,7 +108,8 @@ class MlxBridgeTests(unittest.TestCase):
 
         self.assertEqual(result.video_path, "")
         self.assertEqual(captured["args"][0], sys.executable)
-        self.assertEqual(captured["args"][1], "-m")
+        self.assertEqual(captured["args"][1], "-u")
+        self.assertEqual(captured["args"][2], "-m")
         self.assertIn("LongCat_Video.mlx_runner_cli", captured["args"])
         self.assertEqual(captured["timeout"], 30.0)
         self.assertTrue(Path(result.request_path).is_file())
@@ -114,6 +117,63 @@ class MlxBridgeTests(unittest.TestCase):
         self.assertTrue((Path(result.job_dir) / "input.png").is_file())
         self.assertTrue((Path(result.job_dir) / "input.wav").is_file())
         self.assertTrue(Path(result.job_dir).resolve().is_relative_to(self.output_root.resolve()))
+
+    def test_bridge_default_runner_returns_job_log_path(self):
+        result = run_mlx_bridge_job(**self.bridge_kwargs(job_id="default_log"))
+
+        self.assertTrue(result.log_path)
+        self.assertTrue(Path(result.log_path).is_file())
+        self.assertTrue(Path(result.log_path).resolve().is_relative_to(Path(result.job_dir).resolve()))
+
+    def test_default_subprocess_streams_log_before_process_exit(self):
+        log_path = self.root / "streaming.log"
+        release_path = self.root / "release.txt"
+        script = (
+            "import pathlib, time\n"
+            "print('live-line', flush=True)\n"
+            f"release = pathlib.Path({str(release_path)!r})\n"
+            "deadline = time.time() + 10\n"
+            "while time.time() < deadline and not release.exists():\n"
+            "    time.sleep(0.05)\n"
+            "print('done-line', flush=True)\n"
+        )
+        result = {}
+
+        def invoke_runner():
+            result["value"] = _run_subprocess(
+                [sys.executable, "-u", "-c", script],
+                8.0,
+                log_path=log_path,
+            )
+
+        thread = threading.Thread(target=invoke_runner)
+        thread.start()
+        saw_live_line = False
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if log_path.is_file() and "live-line" in log_path.read_text(encoding="utf-8"):
+                saw_live_line = True
+                break
+            time.sleep(0.05)
+
+        self.assertTrue(saw_live_line)
+        self.assertTrue(thread.is_alive())
+        release_path.write_text("release", encoding="utf-8")
+        thread.join(timeout=5)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(result["value"].returncode, 0)
+        self.assertIn("done-line", log_path.read_text(encoding="utf-8"))
+
+    def test_default_subprocess_timeout_preserves_sanitized_log_tail(self):
+        log_path = self.root / "timeout.log"
+        script = "import time\nprint('before-timeout', flush=True)\ntime.sleep(30)\n"
+
+        with self.assertRaises(subprocess.TimeoutExpired) as context:
+            _run_subprocess([sys.executable, "-u", "-c", script], 1.0, log_path=log_path)
+
+        self.assertIn("before-timeout", log_path.read_text(encoding="utf-8"))
+        self.assertIn("before-timeout", str(context.exception.output))
 
     def test_bridge_timeout_cleans_job_when_retention_disabled(self):
         def runner(args, timeout_seconds):
